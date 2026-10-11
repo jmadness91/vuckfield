@@ -2,7 +2,7 @@
   "manifest_version": 2,
   "region": "nursery-lane",
   "name": "Nursery Lane to The Highlands",
-  "built_at": "2026-10-11T13:51:08+00:00",
+  "built_at": "2026-10-11T13:57:51+00:00",
   "coordinates": {
     "units": "metres",
     "convention": "glTF y-up: +x east, +y up (metres above Ordnance Datum), +z south",
@@ -30,7 +30,7 @@
     ]
   },
   "counts": {
-    "road_ways": 124,
+    "road_ways_drawn": 79,
     "buildings": 373,
     "unnamed_buildings": 368
   },
@@ -97,8 +97,8 @@
           243.91
         ],
         "z": [
-          53.17,
-          62.04
+          53.18,
+          62.11
         ]
       }
     },
@@ -116,7 +116,7 @@
           -105.08
         ],
         "z": [
-          44.94,
+          44.91,
           55.43
         ]
       }
@@ -135,8 +135,8 @@
           352.69
         ],
         "z": [
-          32.32,
-          63.54
+          32.31,
+          63.56
         ]
       }
     },
@@ -154,8 +154,8 @@
           353.74
         ],
         "z": [
-          30.98,
-          70.46
+          30.97,
+          70.47
         ]
       }
     }

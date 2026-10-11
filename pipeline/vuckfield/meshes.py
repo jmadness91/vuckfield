@@ -69,19 +69,43 @@ def _finish(mesh: trimesh.Trimesh, material: str) -> trimesh.Trimesh:
 
 # --- terrain -----------------------------------------------------------------
 
-def terrain_mesh(region: Region, terrain: Terrain) -> trimesh.Trimesh:
-    s = region.mesh_spacing_m
-    es = np.arange(region.min_e, region.max_e + s / 2, s)
-    ns = np.arange(region.min_n, region.max_n + s / 2, s)
-    E, N = np.meshgrid(es, ns)  # rows run south -> north
-    Z = terrain.sample(E, N)
-    x, y = region.to_local(E, N)
-    verts = np.column_stack([x.ravel(), y.ravel(), Z.ravel()])
-    rows, cols = E.shape
+class TerrainSurface:
+    """The terrain mesh's exact surface: heights on the region grid, interpolated on the same two
+    triangles per cell that the mesh uses. Roads and buildings sample this, not the raw 1 m DTM,
+    so nothing dips below the triangles that are actually drawn."""
+
+    def __init__(self, region: Region, terrain: Terrain):
+        s = region.mesh_spacing_m
+        self.es = np.arange(region.min_e, region.max_e + s / 2, s)
+        self.ns = np.arange(region.min_n, region.max_n + s / 2, s)
+        self.E, self.N = np.meshgrid(self.es, self.ns)  # rows run south -> north
+        self.Z = terrain.sample(self.E, self.N)
+        self.spacing = s
+
+    def sample(self, e, n):
+        e = np.asarray(e, dtype=np.float64)
+        n = np.asarray(n, dtype=np.float64)
+        rows, cols = self.Z.shape
+        fx = np.clip((e - self.es[0]) / self.spacing, 0, cols - 1.000001)
+        fy = np.clip((n - self.ns[0]) / self.spacing, 0, rows - 1.000001)
+        j, i = np.floor(fx).astype(int), np.floor(fy).astype(int)
+        fx, fy = fx - j, fy - i
+        za, zb = self.Z[i, j], self.Z[i, j + 1]          # south-west, south-east
+        zc, zd = self.Z[i + 1, j], self.Z[i + 1, j + 1]  # north-west, north-east
+        # Cells are split on the SW-NE diagonal: triangle (a, b, d) where fx >= fy, else (a, d, c).
+        lower = za + fx * (zb - za) + fy * (zd - zb)
+        upper = za + fy * (zc - za) + fx * (zd - zc)
+        return np.where(fx >= fy, lower, upper)
+
+
+def terrain_mesh(region: Region, surface: TerrainSurface) -> trimesh.Trimesh:
+    x, y = region.to_local(surface.E, surface.N)
+    verts = np.column_stack([x.ravel(), y.ravel(), surface.Z.ravel()])
+    rows, cols = surface.E.shape
     idx = np.arange(rows * cols).reshape(rows, cols)
     a, b = idx[:-1, :-1].ravel(), idx[:-1, 1:].ravel()
     c, d = idx[1:, :-1].ravel(), idx[1:, 1:].ravel()
-    # Counter-clockwise seen from above (+z) so normals face up.
+    # Counter-clockwise seen from above (+z) so normals face up. Must match TerrainSurface.sample.
     faces = np.concatenate([np.column_stack([a, b, d]), np.column_stack([a, d, c])])
     return _finish(trimesh.Trimesh(verts, faces, process=False), "terrain")
 
@@ -97,7 +121,7 @@ def road_width(way: Way) -> float | None:
     return ROAD_WIDTH_M.get(way.tags.get("highway", ""))
 
 
-def _ribbon(line: LineString, width: float, lift: float, region: Region, terrain: Terrain) -> trimesh.Trimesh | None:
+def _ribbon(line: LineString, width: float, lift: float, region: Region, terrain: Terrain | TerrainSurface) -> trimesh.Trimesh | None:
     line = line.segmentize(RIBBON_STEP_M)
     pts = np.asarray(line.coords)[:, :2]
     # Drop consecutive duplicates, which would give zero-length tangents.
@@ -140,7 +164,7 @@ def _clip_lines(way: Way, region: Region) -> list[LineString]:
     return [g for g in getattr(clipped, "geoms", []) if isinstance(g, LineString)]
 
 
-def road_meshes(ways: list[Way], region: Region, terrain: Terrain, material: str | None = None) -> list[trimesh.Trimesh]:
+def road_meshes(ways: list[Way], region: Region, terrain: Terrain | TerrainSurface, material: str | None = None) -> list[trimesh.Trimesh]:
     parts: dict[str, list[trimesh.Trimesh]] = {"road": [], "footway": []}
     for way in ways:
         width = road_width(way)
@@ -173,7 +197,7 @@ def building_height(way: Way) -> float:
     return DEFAULT_BUILDING_HEIGHT_M.get(t.get("building", ""), FALLBACK_BUILDING_HEIGHT_M)
 
 
-def building_mesh(way: Way, region: Region, terrain: Terrain) -> trimesh.Trimesh | None:
+def building_mesh(way: Way, region: Region, terrain: Terrain | TerrainSurface) -> trimesh.Trimesh | None:
     poly = way.polygon()
     ring = np.asarray(poly.exterior.coords)
     ground = terrain.sample(ring[:, 0], ring[:, 1])
@@ -191,6 +215,6 @@ def building_mesh(way: Way, region: Region, terrain: Terrain) -> trimesh.Trimesh
     return m
 
 
-def building_meshes(ways: list[Way], region: Region, terrain: Terrain, material: str = "building") -> list[trimesh.Trimesh]:
+def building_meshes(ways: list[Way], region: Region, terrain: Terrain | TerrainSurface, material: str = "building") -> list[trimesh.Trimesh]:
     ms = [m for m in (building_mesh(w, region, terrain) for w in ways) if m is not None]
     return [_finish(trimesh.util.concatenate(ms), material)] if ms else []

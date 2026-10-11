@@ -74,7 +74,7 @@ def _up_facing(mesh):
 
 
 def test_terrain_faces_point_up():
-    m = meshes.terrain_mesh(make_region(), flat())
+    m = meshes.terrain_mesh(make_region(), meshes.TerrainSurface(make_region(), flat()))
     assert _up_facing(m) == 1.0
     assert m.vertices[:, 1].min() == pytest.approx(10.0)
 
@@ -117,3 +117,49 @@ def test_building_is_watertight_and_reaches_height():
     assert m.is_watertight
     assert m.vertices[:, 1].max() == pytest.approx(10.0 + 7.5)
     assert m.vertices[:, 1].min() == pytest.approx(10.0 - meshes.BUILDING_SINK_M)
+
+
+def _height_on_triangles(mesh, east, north):
+    """Height of a y-up mesh at (east, north) by brute-force barycentric lookup (small meshes only)."""
+    tri = mesh.vertices[mesh.faces]  # glTF: x east, y up, z south
+    ax, an = tri[:, 0, 0], -tri[:, 0, 2]
+    bx, bn = tri[:, 1, 0], -tri[:, 1, 2]
+    cx, cn = tri[:, 2, 0], -tri[:, 2, 2]
+    den = (bn - cn) * (ax - cx) + (cx - bx) * (an - cn)
+    w1 = ((bn - cn) * (east - cx) + (cx - bx) * (north - cn)) / den
+    w2 = ((cn - an) * (east - cx) + (ax - cx) * (north - cn)) / den
+    w3 = 1 - w1 - w2
+    k = np.flatnonzero((w1 >= -1e-9) & (w2 >= -1e-9) & (w3 >= -1e-9))[0]
+    return w1[k] * tri[k, 0, 1] + w2[k] * tri[k, 1, 1] + w3[k] * tri[k, 2, 1]
+
+
+def test_surface_matches_terrain_mesh_triangles():
+    # Roads/buildings are draped on TerrainSurface; it must agree with the drawn triangles exactly.
+    rng = np.random.default_rng(1)
+    region = make_region()
+    t = Terrain(rng.uniform(0, 20, (120, 120)), west=-10, north=110, res=1.0)
+    surface = meshes.TerrainSurface(region, t)
+    mesh = meshes.terrain_mesh(region, surface)
+    for e, n in rng.uniform(1, 99, (200, 2)):
+        expected = _height_on_triangles(mesh, e - region.origin_e, n - region.origin_n)
+        assert surface.sample(e, n) == pytest.approx(expected, abs=1e-9)
+
+
+def test_region_1_roads_never_below_terrain():
+    # Reviewer finding: 43 road vertices were below the 2 m terrain mesh (draped on the 1 m DTM).
+    import trimesh
+    region = Region.load("nursery-lane")
+    d = REGIONS_DIR.parent / "build" / "regions" / "nursery-lane"
+    tv = trimesh.load(d / "terrain.glb", force="mesh").vertices
+    # Rebuild the drawn surface from the committed terrain.glb itself (grid order is row-major S->N).
+    surface = meshes.TerrainSurface.__new__(meshes.TerrainSurface)
+    surface.spacing = region.mesh_spacing_m
+    surface.es = np.unique(np.round(tv[:, 0], 6)) + region.origin_e
+    surface.ns = np.unique(np.round(-tv[:, 2], 6)) + region.origin_n
+    surface.Z = tv[:, 1].reshape(len(surface.ns), len(surface.es))
+    for f in ["roads.glb", "landmark_nursery-lane.glb"]:
+        v = trimesh.load(d / f, force="mesh").vertices
+        e, n = v[:, 0] + region.origin_e, -v[:, 2] + region.origin_n
+        inside = (e > region.min_e) & (e < region.max_e) & (n > region.min_n) & (n < region.max_n)
+        gap = v[inside, 1] - surface.sample(e[inside], n[inside])
+        assert gap.min() > 0.05, f"{f}: road vertex {gap.min():.3f} m relative to terrain"

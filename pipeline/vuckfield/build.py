@@ -52,7 +52,8 @@ def build(region_id: str, refresh: bool = False, out_dir: Path | None = None) ->
     buildings = osm.buildings(ways, region)
 
     files: dict[str, dict] = {}
-    files["terrain"] = _export([meshes.terrain_mesh(region, terrain)], out / "terrain.glb", "Terrain")
+    surface = meshes.TerrainSurface(region, terrain)
+    files["terrain"] = _export([meshes.terrain_mesh(region, surface)], out / "terrain.glb", "Terrain")
 
     landmark_info = []
     claimed: set[int] = set()
@@ -63,8 +64,8 @@ def build(region_id: str, refresh: bool = False, out_dir: Path | None = None) ->
         if not hits:
             raise RuntimeError(f"landmark {lm['id']!r} not found in OSM data ({lm['osm']}, name={lm['name']!r})")
         claimed.update(w.id for w in hits)
-        parts = (meshes.road_meshes(hits, region, terrain, material="landmark") if is_road
-                 else meshes.building_meshes(hits, region, terrain, material="landmark"))
+        parts = (meshes.road_meshes(hits, region, surface, material="landmark") if is_road
+                 else meshes.building_meshes(hits, region, surface, material="landmark"))
         if not parts:
             raise RuntimeError(f"landmark {lm['id']!r} produced no geometry inside the region bbox")
         key = f"landmark_{lm['id']}"
@@ -79,9 +80,9 @@ def build(region_id: str, refresh: bool = False, out_dir: Path | None = None) ->
         })
 
     files["roads"] = _export(
-        meshes.road_meshes([w for w in roads if w.id not in claimed], region, terrain), out / "roads.glb", "Roads")
+        meshes.road_meshes([w for w in roads if w.id not in claimed], region, surface), out / "roads.glb", "Roads")
     files["buildings"] = _export(
-        meshes.building_meshes([w for w in buildings if w.id not in claimed], region, terrain),
+        meshes.building_meshes([w for w in buildings if w.id not in claimed], region, surface),
         out / "buildings.glb", "Buildings")
 
     grid = terrain.sample(*np.meshgrid(np.linspace(region.min_e, region.max_e, 50),
@@ -104,7 +105,8 @@ def build(region_id: str, refresh: bool = False, out_dir: Path | None = None) ->
             "height_range_m": [round(float(grid.min()), 2), round(float(grid.max()), 2)],
         },
         "counts": {
-            "road_ways": len(roads),
+            "road_ways_drawn": sum(1 for w in roads if meshes.road_width(w) is not None
+                                   and meshes._clip_lines(w, region)),
             "buildings": len(buildings),
             "unnamed_buildings": sum(1 for w in buildings if "name" not in w.tags),
         },
