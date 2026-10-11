@@ -101,22 +101,15 @@ def test_unknown_highway_is_skipped():
     assert meshes.road_meshes([way], make_region(), flat()) == []
 
 
-@pytest.mark.parametrize("tags,expected", [
-    ({"building": "yes", "height": "12 m"}, 12.0),
-    ({"building": "yes", "building:levels": "3"}, 10.0),
-    ({"building": "garage"}, 2.8),
-    ({"building": "yes"}, meshes.FALLBACK_BUILDING_HEIGHT_M),
-])
-def test_building_height(tags, expected):
-    assert meshes.building_height(Way(1, tags, [])) == expected
-
-
-def test_building_is_watertight_and_reaches_height():
-    square = [(40, 40), (50, 40), (50, 50), (40, 50), (40, 40)]
-    [m] = meshes.building_meshes([Way(1, {"building": "house"}, square)], make_region(), flat())
-    assert m.is_watertight
-    assert m.vertices[:, 1].max() == pytest.approx(10.0 + 7.5)
-    assert m.vertices[:, 1].min() == pytest.approx(10.0 - meshes.BUILDING_SINK_M)
+def test_buildings_export_walls_and_roofs_on_terrain():
+    region = make_region()
+    surface = meshes.TerrainSurface(region, flat())
+    square = [(40, 40), (50, 40), (50, 48), (40, 48), (40, 40)]
+    walls, roof = meshes.building_meshes([Way(1, {"building": "house"}, square)], region, surface)
+    assert walls.visual.material.name == "M_building" and roof.visual.material.name == "M_roof"
+    # glTF y-up: walls start below ground (sunk), roof ridge above the default eave.
+    assert walls.vertices[:, 1].min() == pytest.approx(10.0 - meshes.BUILDING_SINK_M)
+    assert roof.vertices[:, 1].max() > 10.0 + 5.2
 
 
 def _height_on_triangles(mesh, east, north):

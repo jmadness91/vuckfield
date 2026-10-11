@@ -10,6 +10,7 @@ import numpy as np
 import trimesh
 from shapely.geometry import LineString, MultiLineString, Polygon, box
 
+from . import roofs
 from .osm import Way
 from .region import Region
 from .terrain import Terrain
@@ -27,21 +28,15 @@ FOOTWAY_CLASSES = {"footway", "path", "cycleway", "pedestrian", "bridleway", "st
 LIFT_ROAD_M = 0.15
 LIFT_FOOTWAY_M = 0.10
 RIBBON_STEP_M = 2.0
-LEVEL_HEIGHT_M = 3.0
 BUILDING_SINK_M = 0.5
 
-DEFAULT_BUILDING_HEIGHT_M = {
-    "house": 7.5, "detached": 7.5, "semidetached_house": 7.5, "terrace": 7.5,
-    "bungalow": 4.5, "residential": 7.5, "apartments": 10.0,
-    "garage": 2.8, "garages": 2.8, "shed": 2.5, "roof": 3.0,
-}
-FALLBACK_BUILDING_HEIGHT_M = 7.0
 
 COLOURS = {
     "terrain": (0.36, 0.45, 0.28, 1.0),
     "road": (0.22, 0.22, 0.24, 1.0),
     "footway": (0.55, 0.53, 0.50, 1.0),
     "building": (0.80, 0.76, 0.70, 1.0),
+    "roof": (0.45, 0.25, 0.20, 1.0),
     "landmark": (0.75, 0.18, 0.12, 1.0),
 }
 
@@ -185,36 +180,37 @@ def road_meshes(ways: list[Way], region: Region, terrain: Terrain | TerrainSurfa
 
 # --- buildings ---------------------------------------------------------------
 
-def building_height(way: Way) -> float:
-    t = way.tags
-    for key in ("height", "building:height"):
-        m = re.match(r"^\s*([\d.]+)", t.get(key, ""))
-        if m:
-            return float(m.group(1))
-    m = re.match(r"^\s*(\d+)", t.get("building:levels", ""))
-    if m:
-        return int(m.group(1)) * LEVEL_HEIGHT_M + 1.0
-    return DEFAULT_BUILDING_HEIGHT_M.get(t.get("building", ""), FALLBACK_BUILDING_HEIGHT_M)
+def _from_part(part: roofs.Part, material: str) -> trimesh.Trimesh:
+    mesh = trimesh.Trimesh(part.verts, part.faces, process=False)
+    mesh.visual = trimesh.visual.TextureVisuals(uv=part.uv, material=_material(material))
+    mesh.apply_transform(Z_UP_TO_Y_UP)
+    return mesh
 
 
-def building_mesh(way: Way, region: Region, terrain: Terrain | TerrainSurface) -> trimesh.Trimesh | None:
-    poly = way.polygon()
-    ring = np.asarray(poly.exterior.coords)
-    ground = terrain.sample(ring[:, 0], ring[:, 1])
-    base = float(ground.min()) - BUILDING_SINK_M
-    top = float(ground.max()) + building_height(way)
-    ox, oy = region.origin_e, region.origin_n
-    local = Polygon(
-        [(x - ox, y - oy) for x, y in poly.exterior.coords],
-        [[(x - ox, y - oy) for x, y in r.coords] for r in poly.interiors],
-    ).buffer(0)
-    if local.is_empty or local.geom_type != "Polygon":
-        return None
-    m = trimesh.creation.extrude_polygon(local, top - base)
-    m.apply_translation([0, 0, base])
-    return m
+def building_roof(way: Way, surface: TerrainSurface, fitted: dict[int, roofs.Roof]) -> roofs.Roof:
+    if way.id in fitted:
+        return fitted[way.id]
+    ring = np.asarray(way.polygon().exterior.coords)
+    return roofs.default_roof(way, float(np.median(surface.sample(ring[:, 0], ring[:, 1]))))
 
 
-def building_meshes(ways: list[Way], region: Region, terrain: Terrain | TerrainSurface, material: str = "building") -> list[trimesh.Trimesh]:
-    ms = [m for m in (building_mesh(w, region, terrain) for w in ways) if m is not None]
-    return [_finish(trimesh.util.concatenate(ms), material)] if ms else []
+def building_meshes(ways: list[Way], region: Region, surface: TerrainSurface,
+                    fitted: dict[int, roofs.Roof] | None = None,
+                    wall_material: str = "building", roof_material: str = "roof") -> list[trimesh.Trimesh]:
+    """Walls (with floors) and roofs as two meshes. `fitted` holds LIDAR roofs by way id;
+    buildings without one get tag/default heights."""
+    fitted = fitted or {}
+    walls, tops = [], []
+    for way in ways:
+        ring = np.asarray(way.polygon().exterior.coords)
+        base = float(surface.sample(ring[:, 0], ring[:, 1]).min()) - BUILDING_SINK_M
+        w, r = roofs.building_parts(way.polygon(), building_roof(way, surface, fitted), base,
+                                    (region.origin_e, region.origin_n))
+        walls.append(w)
+        tops.append(r)
+    out = []
+    for parts, material in ((walls, wall_material), (tops, roof_material)):
+        joined = roofs.Part.join(parts)
+        if len(joined.faces):
+            out.append(_from_part(joined, material))
+    return out

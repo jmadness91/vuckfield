@@ -8,7 +8,7 @@ from pathlib import Path
 import numpy as np
 import trimesh
 
-from . import align, meshes, osm, sources
+from . import align, meshes, osm, roofs, sources
 from .region import Region, bng_to_lonlat, lonlat_to_bng
 from .terrain import Terrain
 
@@ -53,6 +53,7 @@ def build(region_id: str, refresh: bool = False, out_dir: Path | None = None) ->
     ways = align.shift_ways(ways, alignment.dx, alignment.dy)
     roads = osm.roads(ways)
     buildings = osm.buildings(ways, region)
+    fitted = {w.id: r for w in buildings if (r := roofs.fit_roof(w, terrain, dsm)) is not None}
 
     files: dict[str, dict] = {}
     surface = meshes.TerrainSurface(region, terrain)
@@ -68,7 +69,7 @@ def build(region_id: str, refresh: bool = False, out_dir: Path | None = None) ->
             raise RuntimeError(f"landmark {lm['id']!r} not found in OSM data ({lm['osm']}, name={lm['name']!r})")
         claimed.update(w.id for w in hits)
         parts = (meshes.road_meshes(hits, region, surface, material="landmark") if is_road
-                 else meshes.building_meshes(hits, region, surface, material="landmark"))
+                 else meshes.building_meshes(hits, region, surface, fitted, wall_material="landmark"))
         if not parts:
             raise RuntimeError(f"landmark {lm['id']!r} produced no geometry inside the region bbox")
         key = f"landmark_{lm['id']}"
@@ -85,7 +86,7 @@ def build(region_id: str, refresh: bool = False, out_dir: Path | None = None) ->
     files["roads"] = _export(
         meshes.road_meshes([w for w in roads if w.id not in claimed], region, surface), out / "roads.glb", "Roads")
     files["buildings"] = _export(
-        meshes.building_meshes([w for w in buildings if w.id not in claimed], region, surface),
+        meshes.building_meshes([w for w in buildings if w.id not in claimed], region, surface, fitted),
         out / "buildings.glb", "Buildings")
 
     grid = terrain.sample(*np.meshgrid(np.linspace(region.min_e, region.max_e, 50),
@@ -113,6 +114,10 @@ def build(region_id: str, refresh: bool = False, out_dir: Path | None = None) ->
                                    and meshes._clip_lines(w, region)),
             "buildings": len(buildings),
             "unnamed_buildings": sum(1 for w in buildings if "name" not in w.tags),
+            "building_heights_from_lidar": len(fitted),
+            "roof_shapes": {shape: sum(1 for w in buildings
+                                       if meshes.building_roof(w, surface, fitted).shape == shape)
+                            for shape in roofs.SHAPES},
         },
         "landmarks": landmark_info,
         "files": files,

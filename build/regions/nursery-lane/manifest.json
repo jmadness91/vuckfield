@@ -2,7 +2,7 @@
   "manifest_version": 2,
   "region": "nursery-lane",
   "name": "Nursery Lane to The Highlands",
-  "built_at": "2026-10-11T16:47:32+00:00",
+  "built_at": "2026-10-11T16:54:09+00:00",
   "coordinates": {
     "units": "metres",
     "convention": "glTF y-up: +x east, +y up (metres above Ordnance Datum), +z south",
@@ -39,7 +39,14 @@
   "counts": {
     "road_ways_drawn": 78,
     "buildings": 373,
-    "unnamed_buildings": 368
+    "unnamed_buildings": 368,
+    "building_heights_from_lidar": 371,
+    "roof_shapes": {
+      "flat": 71,
+      "gabled": 142,
+      "gabled_x": 119,
+      "hipped": 41
+    }
   },
   "landmarks": [
     {
@@ -93,7 +100,7 @@
     "landmark_the-highlands": {
       "file": "landmark_the-highlands.glb",
       "triangles": 20,
-      "bytes": 1388,
+      "bytes": 3172,
       "bounds_local_m": {
         "x_east": [
           -63.93,
@@ -105,7 +112,7 @@
         ],
         "z": [
           53.48,
-          62.1
+          59.52
         ]
       }
     },
@@ -149,8 +156,8 @@
     },
     "buildings": {
       "file": "buildings.glb",
-      "triangles": 4692,
-      "bytes": 94340,
+      "triangles": 7436,
+      "bytes": 416800,
       "bounds_local_m": {
         "x_east": [
           -205.6,
@@ -162,7 +169,7 @@
         ],
         "z": [
           30.98,
-          70.55
+          71.01
         ]
       }
     }
