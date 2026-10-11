@@ -1,0 +1,97 @@
+{
+  "manifest_version": 1,
+  "region": "nursery-lane",
+  "name": "Nursery Lane to The Highlands",
+  "built_at": "2026-10-11T12:43:42+00:00",
+  "coordinates": {
+    "units": "metres",
+    "convention": "glTF y-up: +x east, +y up (metres above Ordnance Datum), +z south",
+    "origin_bng": {
+      "e": 547600,
+      "n": 119800
+    },
+    "origin_wgs84": {
+      "lat": 50.9587296,
+      "lon": 0.1002737
+    },
+    "extent_local_m": {
+      "x_east": [
+        -200,
+        200
+      ],
+      "y_north": [
+        -300,
+        350
+      ]
+    },
+    "height_range_m": [
+      30.89,
+      63.24
+    ]
+  },
+  "counts": {
+    "road_ways": 124,
+    "buildings": 373,
+    "unnamed_buildings": 368
+  },
+  "landmarks": [
+    {
+      "id": "the-highlands",
+      "name": "The Highlands",
+      "file": "landmark_the-highlands.glb",
+      "osm_way_ids": [
+        416462289
+      ],
+      "local_m": {
+        "x_east": -49.92,
+        "y_north": 228.53,
+        "z": 54.99
+      }
+    },
+    {
+      "id": "nursery-lane",
+      "name": "Nursery Lane",
+      "file": "landmark_nursery-lane.glb",
+      "osm_way_ids": [
+        30317859,
+        61193065
+      ],
+      "local_m": {
+        "x_east": 21.3,
+        "y_north": -147.54,
+        "z": 51.3
+      }
+    }
+  ],
+  "files": {
+    "terrain": {
+      "file": "terrain.glb",
+      "triangles": 130000,
+      "bytes": 2347244
+    },
+    "landmark_the-highlands": {
+      "file": "landmark_the-highlands.glb",
+      "triangles": 20,
+      "bytes": 1388
+    },
+    "landmark_nursery-lane": {
+      "file": "landmark_nursery-lane.glb",
+      "triangles": 140,
+      "bytes": 4396
+    },
+    "roads": {
+      "file": "roads.glb",
+      "triangles": 6072,
+      "bytes": 149268
+    },
+    "buildings": {
+      "file": "buildings.glb",
+      "triangles": 4692,
+      "bytes": 94344
+    }
+  },
+  "attribution": [
+    "Map data (c) OpenStreetMap contributors, ODbL 1.0",
+    "Contains Environment Agency information (c) Environment Agency and database right; OGL v3.0"
+  ]
+}

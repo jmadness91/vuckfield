@@ -1,0 +1,20 @@
+{
+  "id": "nursery-lane",
+  "name": "Nursery Lane to The Highlands",
+  "description": "Region 1. Nursery Lane (Ridgewood) north along Eastbourne Road to The Highlands pub.",
+  "crs": "EPSG:27700",
+  "bbox_bng": { "min_e": 547400, "min_n": 119500, "max_e": 547800, "max_n": 120150 },
+  "origin_bng": { "e": 547600, "n": 119800 },
+  "terrain": { "source": "ea-lidar-dtm-1m", "mesh_spacing_m": 2.0 },
+  "landmarks": [
+    { "id": "the-highlands", "name": "The Highlands", "osm": "amenity=pub", "lat": 50.960796, "lon": 0.099656 },
+    { "id": "nursery-lane", "name": "Nursery Lane", "osm": "highway=residential", "lat": 50.9573983, "lon": 0.1005170 }
+  ],
+  "acceptance": [
+    "Terrain mesh covers the full bbox with no holes",
+    "Nursery Lane, Eastbourne Road and Highlands Avenue are present as road meshes",
+    "The Highlands pub building is present and highlighted as a landmark",
+    "Every OSM building whose centroid is inside the bbox is extruded",
+    "In Unreal, the level opens and a camera can fly from Nursery Lane to The Highlands"
+  ]
+}
