@@ -5,11 +5,15 @@ Run from the Vuckfield menu, or in the Output Log (Python):
 
 Idempotent: re-running replaces the region's assets and actors.
 """
+import datetime
 import json
 import math
 import os
+import traceback
 
 import unreal
+
+from . import verify
 
 MANIFEST_VERSION = 2
 CONTENT_ROOT = "/Game/Vuckfield"
@@ -103,39 +107,118 @@ def _spawn_environment(actors):
     _spawn(actors, unreal.ExponentialHeightFog, "HeightFog", "Environment")
 
 
+class _Report:
+    """Records every step so a failed or odd build can be diagnosed from one file."""
+
+    def __init__(self, region_id):
+        self.data = {
+            "region": region_id,
+            "engine_version": unreal.SystemLibrary.get_engine_version(),
+            "started": datetime.datetime.now().isoformat(timespec="seconds"),
+            "steps": [],
+            "verdict": "FAIL",
+        }
+
+    def step(self, name, fn, fatal=False):
+        try:
+            result = fn()
+            self.data["steps"].append({"step": name, "ok": True})
+            return result
+        except Exception as exc:  # noqa: BLE001 - every failure must land in the report
+            self.data["steps"].append({"step": name, "ok": False, "error": f"{type(exc).__name__}: {exc}",
+                                       "traceback": traceback.format_exc()})
+            unreal.log_error(f"Vuckfield: step '{name}' failed: {exc}")
+            if fatal:
+                raise
+            return None
+
+    def write(self):
+        out_dir = os.path.join(unreal.Paths.project_saved_dir(), "Vuckfield")
+        os.makedirs(out_dir, exist_ok=True)
+        path = os.path.abspath(os.path.join(out_dir, f"report_{self.data['region']}.json"))
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(self.data, f, indent=2)
+        return path
+
+
 def build_level(region_id):
-    manifest = _load_manifest(region_id)
+    """Import a region, build its level, verify the result and write Saved/Vuckfield/report_<id>.json."""
+    report = _Report(region_id)
+    try:
+        _build(region_id, report)
+    except Exception:  # noqa: BLE001 - fatal step already recorded; still write the report
+        pass
+    finally:
+        path = report.write()
+        line = report.data.get("summary", f"VUCKFIELD BUILD {region_id}: FAIL - see report")
+        (unreal.log if report.data["verdict"] == "PASS" else unreal.log_error)(line)
+        unreal.log(f"Vuckfield: report written to {path}")
+    return report.data["verdict"]
+
+
+def _build(region_id, report):
+    manifest = report.step("load manifest", lambda: _load_manifest(region_id), fatal=True)
     src = os.path.join(_regions_build_dir(), region_id)
     name = _asset_name(region_id)
     content = f"{CONTENT_ROOT}/Regions/{name}"
     level_path = f"{CONTENT_ROOT}/Maps/L_{name}"
+    report.data["level"] = level_path
 
-    with unreal.ScopedSlowTask(len(manifest["files"]) + 3, f"Building {manifest['name']}") as task:
+    with unreal.ScopedSlowTask(len(manifest["files"]) + 4, f"Building {manifest['name']}") as task:
         task.make_dialog(True)
-        les, actors = _open_or_create_level(level_path)
+        les, actors = report.step("open or create level", lambda: _open_or_create_level(level_path), fatal=True)
 
-        spawned = {}
+        spawned, imported = {}, {}
         for key, info in manifest["files"].items():
             task.enter_progress_frame(1, f"Importing {info['file']}")
-            meshes = _import_glb(os.path.join(src, info["file"]), f"{content}/{key}")
+            meshes = report.step(f"import {info['file']}",
+                                 lambda: _import_glb(os.path.join(src, info["file"]), f"{content}/{key}"))
+            if not meshes:
+                continue
+            imported[key] = [m.get_path_name() for m in meshes]
             folder = "Landmarks" if key.startswith("landmark_") else key.capitalize()
-            spawned[key] = [_spawn(actors, m, f"{key}_{i}", folder) for i, m in enumerate(meshes)]
+            placed = report.step(f"place {key}",
+                                 lambda: [_spawn(actors, m, f"{key}_{i}", folder) for i, m in enumerate(meshes)])
+            if placed:
+                spawned[key] = placed
+        report.data["imported_meshes"] = imported
 
         task.enter_progress_frame(1, "Lighting")
-        _spawn_environment(actors)
+        report.step("lighting", lambda: _spawn_environment(actors))
 
         task.enter_progress_frame(1, "Camera")
-        _place_start(actors, spawned)
+        report.step("camera and player start", lambda: _place_start(actors, spawned))
+
+        task.enter_progress_frame(1, "Verifying")
+        measured = {key: _measure(lst) for key, lst in spawned.items()}
+        report.data["measured_bounds_cm"] = measured
+        result = report.step("verify", lambda: verify.evaluate(manifest, measured))
+        if result:
+            report.data.update(result)
+            report.data["summary"] = verify.summary_line(region_id, result)
+        failed_steps = [s["step"] for s in report.data["steps"] if not s["ok"]]
+        if failed_steps:
+            report.data["verdict"] = "FAIL"
+            report.data["summary"] = f"VUCKFIELD BUILD {region_id}: FAIL - steps failed: {'; '.join(failed_steps)}"
 
         task.enter_progress_frame(1, "Saving")
-        les.save_current_level()
+        report.step("save level", les.save_current_level)
     unreal.log(f"Vuckfield: built {level_path} from {src}")
-    return level_path
+
+
+def _measure(actor_list):
+    """Combined world-space AABB of actors, as {"centre": [x, y, z], "extent": [x, y, z]} in cm."""
+    lo, hi = [math.inf] * 3, [-math.inf] * 3
+    for a in actor_list:
+        origin, extent = a.get_actor_bounds(False)
+        for i, (o, e) in enumerate(((origin.x, extent.x), (origin.y, extent.y), (origin.z, extent.z))):
+            lo[i], hi[i] = min(lo[i], o - e), max(hi[i], o + e)
+    return {"centre": [(l + h) / 2 for l, h in zip(lo, hi)], "extent": [(h - l) / 2 for l, h in zip(lo, hi)]}
 
 
 def _bounds_centre(actor_list):
-    origin, _ = actor_list[0].get_actor_bounds(False)
-    return origin
+    c = _measure(actor_list)["centre"]
+    return unreal.Vector(c[0], c[1], c[2])
 
 
 def _place_start(actors, spawned):
