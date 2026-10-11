@@ -54,7 +54,15 @@ cd vuckfield
    It imports `build/regions/nursery-lane/*.glb`, creates `/Game/Vuckfield/Maps/L_nursery_lane`,
    adds sky and lighting, places the camera above Nursery Lane facing The Highlands, and saves.
    Re-running it is safe: it replaces the region's assets and actors.
-3. Press **Play** (Alt+P).
+3. Check the result. The build checks itself: it measures where every piece landed and compares it
+   with the pipeline's expectations (scale, orientation, mirroring, heights, alignment). The Output Log
+   (*Window > Output Log*) shows one line:
+   ```
+   VUCKFIELD BUILD nursery-lane: PASS - all checks passed
+   ```
+   or `FAIL - <reason>`. The full detail is in `unreal/Saved/Vuckfield/report_nursery-lane.json`.
+   **Either way, send that file back**; it's how problems get fixed in one round.
+4. Press **Play** (Alt+P).
 
 | Control | Action |
 |---|---|
@@ -70,7 +78,7 @@ Landmarks (Nursery Lane, The Highlands) are red. Terrain is green, roads dark gr
 ```
 import vuckfield_ue; vuckfield_ue.build_level("nursery-lane")
 ```
-Copy any red errors from the Output Log into an issue or your next Claude session.
+Send `unreal/Saved/Vuckfield/report_nursery-lane.json` (if it exists) plus any red Output Log errors to your next Claude session.
 
 ### 3. Set up the Python pipeline (optional)
 Windows (PowerShell):
