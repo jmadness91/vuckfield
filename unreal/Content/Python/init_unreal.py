@@ -8,6 +8,8 @@ def _register_menu():
     menus = unreal.ToolMenus.get()
     main = menus.find_menu("LevelEditor.MainMenu")
     if main is None:
+        unreal.log_warning("Vuckfield: main menu not found; run "
+                           "'import vuckfield_ue; vuckfield_ue.build_level(\"<region>\")' in the Python console")
         return
     sub = main.add_sub_menu("Vuckfield", "Vuckfield", "Vuckfield", "Vuckfield")
     for region_id in vuckfield_ue.available_regions():

@@ -51,17 +51,25 @@ def fake_unreal(saved_dir, fail_import=None):
         setattr(u, cls, type(cls, (), {}))
     u.ComponentMobility = types.SimpleNamespace(MOVABLE="movable")
     u.Paths = types.SimpleNamespace(project_dir=lambda: str(ROOT / "unreal") + "/",
-                                    project_saved_dir=lambda: str(saved_dir))
+                                    project_saved_dir=lambda: str(saved_dir),
+                                    convert_relative_path_to_full=lambda p: p)
+    u.CollisionTraceFlag = types.SimpleNamespace(CTF_USE_COMPLEX_AS_SIMPLE="complex_as_simple")
     u.SystemLibrary = types.SimpleNamespace(get_engine_version=lambda: "5.x-fake")
     u.logs = []
     u.log = lambda m: u.logs.append(("info", m))
     u.log_error = lambda m: u.logs.append(("error", m))
+    u.log_warning = lambda m: u.logs.append(("warning", m))
 
     imported = {}
 
     class Task:
+        objects = ()
+
         def set_editor_property(self, k, v):
             setattr(self, k, v)
+
+        def get_objects(self):
+            return list(self.objects)
 
     def import_asset_tasks(tasks):
         for t in tasks:
@@ -71,7 +79,10 @@ def fake_unreal(saved_dir, fail_import=None):
             mesh = u.StaticMesh()
             mesh.key = key
             mesh.get_path_name = lambda key=key: f"/Game/fake/{key}"
+            mesh.body_setup = mock.MagicMock()
+            mesh.get_editor_property = lambda name, mesh=mesh: getattr(mesh, name)
             imported[t.destination_path] = mesh
+            t.objects = (mesh, object())  # plus a non-mesh (material) the importer must ignore
 
     u.AssetImportTask = Task
     u.AssetToolsHelpers = types.SimpleNamespace(
@@ -80,6 +91,7 @@ def fake_unreal(saved_dir, fail_import=None):
         does_asset_exist=lambda p: False,
         list_assets=lambda d, recursive=True, include_folder=False: [d] if d in imported else [],
         load_asset=lambda p: imported[p],
+        save_loaded_asset=lambda a: True,
     )
 
     def spawn_obj(obj, loc, rot):
@@ -120,8 +132,8 @@ def fake_unreal(saved_dir, fail_import=None):
     return u
 
 
-def run(tmp_path, **kw):
-    u = fake_unreal(tmp_path, **kw)
+def run(tmp_path, unreal_module=None, **kw):
+    u = unreal_module or fake_unreal(tmp_path, **kw)
     with mock.patch.dict(sys.modules, {"unreal": u}):
         sys.path.insert(0, str(UE_PY))
         try:
@@ -141,6 +153,15 @@ def test_successful_build_passes_and_writes_report(tmp_path):
     assert all(s["ok"] for s in report["steps"])
     assert report["fit"]["east_is"] == "+X" and report["fit"]["north_is"] == "-Y"
     assert any("VUCKFIELD BUILD nursery-lane: PASS" in m for _, m in logs)
+    assert any(s["step"] == "terrain collision" for s in report["steps"])
+
+
+def test_save_failure_is_reported(tmp_path):
+    u = fake_unreal(tmp_path)
+    u.get_editor_subsystem("LevelEditorSubsystem").save_current_level = lambda: False
+    verdict, report, _ = run(tmp_path, unreal_module=u)
+    assert verdict == "FAIL"
+    assert any(s["step"] == "save level" and not s["ok"] for s in report["steps"])
 
 
 def test_failed_import_still_writes_report_with_error(tmp_path):

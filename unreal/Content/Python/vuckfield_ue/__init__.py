@@ -21,8 +21,13 @@ ACTOR_FOLDER = "Vuckfield"
 CAMERA_HEIGHT_CM = 2500.0  # start 25 m above Nursery Lane
 
 
+def _full(path):
+    # FPaths can return paths relative to the engine Binaries dir; make them absolute in UE terms.
+    return os.path.abspath(unreal.Paths.convert_relative_path_to_full(path))
+
+
 def _repo_root():
-    return os.path.abspath(os.path.join(unreal.Paths.project_dir(), os.pardir))
+    return os.path.abspath(os.path.join(_full(unreal.Paths.project_dir()), os.pardir))
 
 
 def _regions_build_dir():
@@ -60,11 +65,9 @@ def _import_glb(path, dest):
     task.set_editor_property("replace_existing", True)
     task.set_editor_property("save", True)
     unreal.AssetToolsHelpers.get_asset_tools().import_asset_tasks([task])
-    meshes = []
-    for p in unreal.EditorAssetLibrary.list_assets(dest, recursive=True, include_folder=False):
-        asset = unreal.EditorAssetLibrary.load_asset(p)
-        if isinstance(asset, unreal.StaticMesh):
-            meshes.append(asset)
+    # Only what THIS import produced; listing the folder would also pick up stale meshes from
+    # earlier builds and spawn them again.
+    meshes = [o for o in task.get_objects() if isinstance(o, unreal.StaticMesh)]
     if not meshes:
         raise RuntimeError(f"importing {path} produced no static meshes (check the Output Log)")
     return meshes
@@ -74,13 +77,27 @@ def _open_or_create_level(level_path):
     les = unreal.get_editor_subsystem(unreal.LevelEditorSubsystem)
     actors = unreal.get_editor_subsystem(unreal.EditorActorSubsystem)
     if unreal.EditorAssetLibrary.does_asset_exist(level_path):
-        les.load_level(level_path)
+        if not les.load_level(level_path):
+            raise RuntimeError(f"could not load level {level_path}")
         for a in actors.get_all_level_actors():
             if str(a.get_folder_path()).startswith(ACTOR_FOLDER):
                 actors.destroy_actor(a)
     elif not les.new_level(level_path):
         raise RuntimeError(f"could not create level {level_path}")
     return les, actors
+
+
+def _use_complex_collision(mesh):
+    """Collide against the real triangles. The default simple hull of a 400 x 650 m terrain would
+    fill the valleys with an invisible wall."""
+    body = mesh.get_editor_property("body_setup")
+    body.set_editor_property("collision_trace_flag", unreal.CollisionTraceFlag.CTF_USE_COMPLEX_AS_SIMPLE)
+    unreal.EditorAssetLibrary.save_loaded_asset(mesh)
+
+
+def _save_level(les):
+    if not les.save_current_level():
+        raise RuntimeError("save_current_level returned False")
 
 
 def _spawn(actors, cls_or_mesh, label, folder, location=None, rotation=None):
@@ -133,9 +150,9 @@ class _Report:
             return None
 
     def write(self):
-        out_dir = os.path.join(unreal.Paths.project_saved_dir(), "Vuckfield")
+        out_dir = os.path.join(_full(unreal.Paths.project_saved_dir()), "Vuckfield")
         os.makedirs(out_dir, exist_ok=True)
-        path = os.path.abspath(os.path.join(out_dir, f"report_{self.data['region']}.json"))
+        path = os.path.join(out_dir, f"report_{self.data['region']}.json")
         with open(path, "w", encoding="utf-8") as f:
             json.dump(self.data, f, indent=2)
         return path
@@ -165,7 +182,7 @@ def _build(region_id, report):
     report.data["level"] = level_path
 
     with unreal.ScopedSlowTask(len(manifest["files"]) + 4, f"Building {manifest['name']}") as task:
-        task.make_dialog(True)
+        task.make_dialog(False)  # no Cancel: a half-built level is worse than waiting
         les, actors = report.step("open or create level", lambda: _open_or_create_level(level_path), fatal=True)
 
         spawned, imported = {}, {}
@@ -176,6 +193,8 @@ def _build(region_id, report):
             if not meshes:
                 continue
             imported[key] = [m.get_path_name() for m in meshes]
+            if key == "terrain":
+                report.step("terrain collision", lambda: [_use_complex_collision(m) for m in meshes])
             folder = "Landmarks" if key.startswith("landmark_") else key.capitalize()
             placed = report.step(f"place {key}",
                                  lambda: [_spawn(actors, m, f"{key}_{i}", folder) for i, m in enumerate(meshes)])
@@ -196,13 +215,15 @@ def _build(region_id, report):
         if result:
             report.data.update(result)
             report.data["summary"] = verify.summary_line(region_id, result)
-        failed_steps = [s["step"] for s in report.data["steps"] if not s["ok"]]
-        if failed_steps:
-            report.data["verdict"] = "FAIL"
-            report.data["summary"] = f"VUCKFIELD BUILD {region_id}: FAIL - steps failed: {'; '.join(failed_steps)}"
 
         task.enter_progress_frame(1, "Saving")
-        report.step("save level", les.save_current_level)
+        report.step("save level", lambda: _save_level(les))
+
+    # Decided last, so a failure in any step (including the save) overrides a passing geometry check.
+    failed_steps = [s["step"] for s in report.data["steps"] if not s["ok"]]
+    if failed_steps:
+        report.data["verdict"] = "FAIL"
+        report.data["summary"] = f"VUCKFIELD BUILD {region_id}: FAIL - steps failed: {'; '.join(failed_steps)}"
     unreal.log(f"Vuckfield: built {level_path} from {src}")
 
 
