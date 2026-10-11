@@ -9,9 +9,11 @@ import itertools
 import math
 
 CM_PER_M = 100.0
-SCALE_TOLERANCE = 0.05  # +-5% of 100 cm/m
-MAX_RMS_CM = 200.0      # bounds centres within ~2 m of where they should be
-MAX_Z_ERROR_CM = 100.0
+SCALE_TOLERANCE = 0.02  # +-2% of 100 cm/m
+# The pipeline's bounds are exact (rounded to 1 cm), so limits can be tight. Roads sit only
+# 15 cm above the terrain: a looser height limit would pass roads buried under it.
+MAX_HORIZONTAL_ERROR_CM = 25.0  # per file: bounds centre and size, east/north
+MAX_Z_ERROR_CM = 10.0           # per file: bounds centre and size, up
 
 
 def _axis_maps():
@@ -38,25 +40,38 @@ def _axis_name(m, column):
     return ("+" if (x or y) > 0 else "-") + ("X" if x else "Y")
 
 
-def fit_horizontal(pairs):
-    """pairs: [((east_m, north_m), (ue_x_cm, ue_y_cm)), ...] -> best axis map, scale and error."""
+def _swap_abs(m, e, n):
+    """Half-extents (always positive) under an axis map: a swap moves east's extent to Y."""
+    return (abs(m[0][0]) * e + abs(m[0][1]) * n, abs(m[1][0]) * e + abs(m[1][1]) * n)
+
+
+def fit_horizontal(items):
+    """items: [(key, (east_m, north_m) centre, (east_m, north_m) half-size,
+                     (x_cm, y_cm) measured centre, (x_cm, y_cm) measured half-size), ...]
+
+    Tries all 8 axis-aligned maps, fits a scale on the centres, and scores each map by its worst
+    per-file error over centres AND sizes (sizes disambiguate swapped axes)."""
     results = []
     for m in _axis_maps():
-        pred = [_apply(m, e, n) for (e, n), _ in pairs]
-        num = sum(px * qx + py * qy for (px, py), (_, q) in zip(pred, pairs) for qx, qy in [q])
+        pred = [_apply(m, *c) for _, c, _, _, _ in items]
+        num = sum(px * mc[0] + py * mc[1] for (px, py), (_, _, _, mc, _) in zip(pred, items))
         den = sum(px * px + py * py for px, py in pred)
         s = max(num / den, 0.0) if den else 0.0  # negative scale would just be the opposite map
-        rms = math.sqrt(sum((s * px - q[0]) ** 2 + (s * py - q[1]) ** 2
-                            for (px, py), (_, q) in zip(pred, pairs)) / len(pairs))
-        results.append((rms, s, m))
+        per_file = {}
+        for (px, py), (key, _, half, mc, mh) in zip(pred, items):
+            hx, hy = _swap_abs(m, *half)
+            per_file[key] = max(abs(s * px - mc[0]), abs(s * py - mc[1]),
+                                abs(s * hx - mh[0]), abs(s * hy - mh[1]))
+        results.append((max(per_file.values()), s, m, per_file))
     results.sort(key=lambda r: r[0])
-    rms, scale, m = results[0]
+    worst, scale, m, per_file = results[0]
     return {
         "east_is": _axis_name(m, 0),
         "north_is": _axis_name(m, 1),
         "scale_cm_per_m": round(scale, 3),
-        "rms_cm": round(rms, 1),
-        "next_best_rms_cm": round(results[1][0], 1),
+        "worst_error_cm": round(worst, 1),
+        "error_cm_by_file": {k: round(v, 1) for k, v in per_file.items()},
+        "next_best_worst_error_cm": round(results[1][0], 1),
         # UE is left-handed (Z up, Y right of X), so a faithful (unmirrored) map has det -1:
         # facing north, east must be on your right.
         "mirrored": _det(m) == 1,
@@ -81,42 +96,40 @@ def evaluate(manifest, measured):
     check("all files imported and placed", not missing,
           f"missing: {missing}" if missing else f"{len(files)} files")
 
-    pairs, keys = [], []
+    items = []
     for key, info in files.items():
         if key in measured:
-            c = _centre_m(info["bounds_local_m"])
-            mc = measured[key]["centre"]
-            pairs.append(((c["x_east"], c["y_north"]), (mc[0], mc[1])))
-            keys.append(key)
+            b = info["bounds_local_m"]
+            c = _centre_m(b)
+            half = ((b["x_east"][1] - b["x_east"][0]) / 2, (b["y_north"][1] - b["y_north"][0]) / 2)
+            mc, mh = measured[key]["centre"], measured[key]["extent"]
+            items.append((key, (c["x_east"], c["y_north"]), half, (mc[0], mc[1]), (mh[0], mh[1])))
 
     fit = None
-    if len(pairs) >= 3:
-        fit = fit_horizontal(pairs)
+    if len(items) >= 3:
+        fit = fit_horizontal(items)
         scale_ok = abs(fit["scale_cm_per_m"] / CM_PER_M - 1) <= SCALE_TOLERANCE
         check("scale is metres -> centimetres", scale_ok,
               f"{fit['scale_cm_per_m']} cm per m (expected {CM_PER_M:.0f})")
         check("not mirrored", not fit["mirrored"],
               f"east -> {fit['east_is']}, north -> {fit['north_is']}")
-        check("pieces line up with each other", fit["rms_cm"] <= MAX_RMS_CM,
-              f"rms {fit['rms_cm']} cm (limit {MAX_RMS_CM:.0f}); next best orientation {fit['next_best_rms_cm']} cm")
+        worst_key = max(fit["error_cm_by_file"], key=fit["error_cm_by_file"].get)
+        check("every file in the right place and size", fit["worst_error_cm"] <= MAX_HORIZONTAL_ERROR_CM,
+              f"worst {worst_key}: {fit['worst_error_cm']} cm (limit {MAX_HORIZONTAL_ERROR_CM:.0f}); "
+              f"next best orientation {fit['next_best_worst_error_cm']} cm")
     else:
-        check("orientation measurable", False, f"need >= 3 placed files, got {len(pairs)}")
+        check("orientation measurable", False, f"need >= 3 placed files, got {len(items)}")
 
     z_errors = {}
     for key, info in files.items():
         if key in measured:
-            expected = _centre_m(info["bounds_local_m"])["z"] * CM_PER_M
-            z_errors[key] = round(measured[key]["centre"][2] - expected, 1)
+            z = info["bounds_local_m"]["z"]
+            centre_err = measured[key]["centre"][2] - (z[0] + z[1]) / 2 * CM_PER_M
+            size_err = measured[key]["extent"][2] - (z[1] - z[0]) / 2 * CM_PER_M
+            z_errors[key] = round(max(centre_err, size_err, key=abs), 1)
     worst = max(z_errors.items(), key=lambda kv: abs(kv[1]), default=(None, 0.0))
-    check("heights match terrain (Ordnance Datum)", abs(worst[1]) <= MAX_Z_ERROR_CM,
-          f"worst {worst[0]}: {worst[1]} cm off")
-
-    if "terrain" in measured:
-        b = files["terrain"]["bounds_local_m"]
-        want = sorted([(b["x_east"][1] - b["x_east"][0]) * CM_PER_M, (b["y_north"][1] - b["y_north"][0]) * CM_PER_M])
-        got = sorted([2 * measured["terrain"]["extent"][0], 2 * measured["terrain"]["extent"][1]])
-        ok = all(abs(g / w - 1) <= SCALE_TOLERANCE for g, w in zip(got, want))
-        check("terrain size", ok, f"{[round(g) for g in got]} cm vs expected {[round(w) for w in want]} cm")
+    check("heights match (metres above Ordnance Datum)", abs(worst[1]) <= MAX_Z_ERROR_CM,
+          f"worst {worst[0]}: {worst[1]} cm off (limit {MAX_Z_ERROR_CM:.0f})")
 
     verdict = "PASS" if checks and all(c["ok"] for c in checks) else "FAIL"
     if fit:

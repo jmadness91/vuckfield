@@ -47,8 +47,8 @@ MIRRORED = {
 def test_faithful_import_passes(name):
     r = verify.evaluate(MANIFEST, simulate(FAITHFUL[name]))
     assert r["verdict"] == "PASS", r["checks"]
-    assert r["fit"]["rms_cm"] < 1
-    assert r["fit"]["next_best_rms_cm"] > 2000  # orientation is unambiguous, not a near-tie
+    assert r["fit"]["worst_error_cm"] < 1
+    assert r["fit"]["next_best_worst_error_cm"] > 2000  # orientation is unambiguous, not a near-tie
 
 
 @pytest.mark.parametrize("name", MIRRORED)
@@ -79,3 +79,30 @@ def test_missing_file_fails():
     r = verify.evaluate(MANIFEST, simulate(FAITHFUL["east=+X, north=-Y"], drop=("roads",)))
     assert r["verdict"] == "FAIL"
     assert "PASS" not in verify.summary_line("nursery-lane", r)
+
+
+@pytest.mark.parametrize("key", ["roads", "buildings", "terrain", "landmark_the-highlands"])
+def test_single_file_shifted_one_metre_fails(key):
+    # Reviewer finding: an rms over all files let one file sit 4 m off and still PASS.
+    measured = simulate(FAITHFUL["east=+X, north=-Y"])
+    c = measured[key]["centre"]
+    measured[key]["centre"] = (c[0] + 100, c[1], c[2])
+    r = verify.evaluate(MANIFEST, measured)
+    assert r["verdict"] == "FAIL"
+    assert key in next(c for c in r["checks"] if c["name"].startswith("every file"))["detail"]
+
+
+def test_roads_sunk_below_terrain_fail():
+    # Reviewer finding: roads sit 15 cm above terrain; 99 cm low used to PASS.
+    measured = simulate(FAITHFUL["east=+X, north=-Y"])
+    c = measured["roads"]["centre"]
+    measured["roads"]["centre"] = (c[0], c[1], c[2] - 20)
+    assert verify.evaluate(MANIFEST, measured)["verdict"] == "FAIL"
+
+
+def test_swapped_axes_with_wrong_size_detected():
+    # Terrain imported with east/north extents swapped is caught by the size comparison.
+    measured = simulate(FAITHFUL["east=+X, north=-Y"])
+    e = measured["terrain"]["extent"]
+    measured["terrain"]["extent"] = (e[1], e[0], e[2])
+    assert verify.evaluate(MANIFEST, measured)["verdict"] == "FAIL"
