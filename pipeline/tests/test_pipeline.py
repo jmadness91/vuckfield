@@ -105,8 +105,10 @@ def test_buildings_export_walls_and_roofs_on_terrain():
     region = make_region()
     surface = meshes.TerrainSurface(region, flat())
     square = [(40, 40), (50, 40), (50, 48), (40, 48), (40, 40)]
-    walls, roof = meshes.building_meshes([Way(1, {"building": "house"}, square)], region, surface)
-    assert walls.visual.material.name == "M_building" and roof.visual.material.name == "M_roof"
+    way = Way(1, {"building": "house", "building:material": "brick", "roof:material": "slate"}, square)
+    walls, roof = meshes.building_meshes([way], region, surface)  # sorted by material name
+    assert walls.visual.material.name == "M_brick_red" and roof.visual.material.name == "M_roof_slate"
+    assert walls.visual.material.baseColorTexture is not None and walls.visual.uv is not None
     # glTF y-up: walls start below ground (sunk), roof ridge above the default eave.
     assert walls.vertices[:, 1].min() == pytest.approx(10.0 - meshes.BUILDING_SINK_M)
     assert roof.vertices[:, 1].max() > 10.0 + 5.2
@@ -156,3 +158,32 @@ def test_region_1_roads_never_below_terrain():
         inside = (e > region.min_e) & (e < region.max_e) & (n > region.min_n) & (n < region.max_n)
         gap = v[inside, 1] - surface.sample(e[inside], n[inside])
         assert gap.min() > 0.05, f"{f}: road vertex {gap.min():.3f} m relative to terrain"
+
+
+def test_textures_and_uv_scale_survive_glb_round_trip(tmp_path):
+    import trimesh
+
+    from vuckfield import textures
+    region = make_region()
+    surface = meshes.TerrainSurface(region, flat())
+    square = [(40, 40), (50, 40), (50, 48), (40, 48), (40, 40)]
+    way = Way(1, {"building": "house", "building:material": "brick", "roof:material": "slate"}, square)
+    walls, _ = meshes.building_meshes([way], region, surface)
+    path = tmp_path / "b.glb"
+    path.write_bytes(trimesh.Scene([walls]).export(file_type="glb"))
+    [m] = trimesh.load(path, force="scene").geometry.values()
+    assert m.visual.material.baseColorTexture.size == (textures.SIZE, textures.SIZE)
+    # Wall UVs start at 0 along each wall: a 10 m wall spans 10 / 2 m-per-tile = 5 texture repeats.
+    assert m.visual.uv[:, 0].max() == pytest.approx(10 / textures.SPECS["brick_red"].tile_m, abs=1e-3)
+
+
+def test_textures_tile_seamlessly():
+    from vuckfield import textures
+    for name in textures.SPECS:
+        a = np.asarray(textures.image(name), dtype=float)
+        for img in (a, a.transpose(1, 0, 2)):  # rows, then columns
+            # The wrap-around seam must look like an ordinary boundary inside the texture (e.g. a
+            # mortar line), never stronger than the strongest one already there.
+            seam = np.abs(img[0] - img[-1]).mean()
+            interior = np.abs(np.diff(img, axis=0)).mean(axis=(1, 2)).max()
+            assert seam <= 1.05 * interior + 1, name

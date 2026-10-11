@@ -69,7 +69,7 @@ def build(region_id: str, refresh: bool = False, out_dir: Path | None = None) ->
             raise RuntimeError(f"landmark {lm['id']!r} not found in OSM data ({lm['osm']}, name={lm['name']!r})")
         claimed.update(w.id for w in hits)
         parts = (meshes.road_meshes(hits, region, surface, material="landmark") if is_road
-                 else meshes.building_meshes(hits, region, surface, fitted, wall_material="landmark"))
+                 else meshes.building_meshes(hits, region, surface, fitted, wall_override="landmark"))
         if not parts:
             raise RuntimeError(f"landmark {lm['id']!r} produced no geometry inside the region bbox")
         key = f"landmark_{lm['id']}"

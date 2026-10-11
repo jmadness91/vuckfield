@@ -24,8 +24,12 @@ def triangles(path, cx, cy, r):
         tf, gname = scene.graph[name]
         m = scene.geometry[gname].copy()
         m.apply_transform(tf)
-        colour = getattr(m.visual.material, "baseColorFactor", None)
-        colour = np.asarray(colour if colour is not None else [200, 200, 200, 255]) / 255.0
+        mat = m.visual.material
+        tex = getattr(mat, "baseColorTexture", None)
+        if tex is not None:  # approximate a textured surface by its texture's mean colour
+            colour = np.append(np.asarray(tex.convert("RGB")).reshape(-1, 3).mean(axis=0), 255) / 255.0
+        else:
+            colour = np.asarray(mat.baseColorFactor if mat.baseColorFactor is not None else [200] * 4) / 255.0
         tri = m.vertices[m.faces][:, :, [0, 2, 1]] * [1, -1, 1]  # -> east, north, up
         c = tri.mean(axis=1)
         keep = (np.abs(c[:, 0] - cx) < r) & (np.abs(c[:, 1] - cy) < r)

@@ -37,8 +37,6 @@ HIP_GAIN = 0.9             # hipped must beat gabled by 10% to be chosen (gabled
 EAVE_RANGE_M = (2.0, 30.0)
 RISE_RANGE_M = (0.0, 8.0)
 DEFAULT_PITCH_DEG = 35.0
-WALL_UV_M = 2.0            # metres of wall per texture repeat
-ROOF_UV_M = 2.0
 GRID_M = 1e-4
 
 OSM_ROOF_SHAPES = {"flat": "flat", "gabled": "gabled", "hipped": "hipped", "pyramidal": "hipped",
@@ -200,7 +198,7 @@ def default_roof(way: Way, ground: float) -> Roof:
 
 @dataclass
 class Part:
-    """Raw geometry for one material: z-up local metres, with texture coordinates."""
+    """Raw geometry for one material: z-up local metres, with texture coordinates in metres."""
     verts: np.ndarray
     faces: np.ndarray
     uv: np.ndarray
@@ -259,9 +257,9 @@ def building_parts(footprint: Polygon, roof: Roof, base: float, origin: tuple[fl
                 f = f[:, ::-1]
             a, b = frame.to_ab(v2[:, 0], v2[:, 1])
             slope = math.sqrt(1 + (rise / max(frame.hw, 1e-6)) ** 2)  # stretch v along the slope
-            roofs.append(Part(v3, f, np.column_stack([a / ROOF_UV_M, b * slope / ROOF_UV_M])))
+            roofs.append(Part(v3, f, np.column_stack([a, b * slope])))
             floors.append(Part(np.column_stack([v2, np.full(len(v2), base)]), f[:, ::-1] if len(f) else f,
-                               np.column_stack([v2[:, 0], v2[:, 1]]) / WALL_UV_M))
+                               v2.copy()))
 
             for ring in [piece.exterior, *piece.interiors]:
                 pts = np.asarray(ring.coords)
@@ -271,6 +269,6 @@ def building_parts(footprint: Polygon, roof: Roof, base: float, origin: tuple[fl
                         continue  # crease between roof pieces, not an outside wall
                     z0, z1 = float(z_of(*p0)), float(z_of(*p1))
                     v = np.array([[*p0, base], [*p1, base], [*p1, z1], [*p0, z0]])
-                    uv = np.array([[0, 0], [length, 0], [length, z1 - base], [0, z0 - base]]) / WALL_UV_M
+                    uv = np.array([[0, 0], [length, 0], [length, z1 - base], [0, z0 - base]])
                     walls.append(Part(v, np.array([[0, 1, 2], [0, 2, 3]]), uv))
     return Part.join(walls + floors), Part.join(roofs)
