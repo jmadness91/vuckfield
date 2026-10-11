@@ -10,9 +10,12 @@ Nursery Lane to The Highlands, Ridgewood.
       press Play, fly from Nursery Lane to The Highlands. Terrain, roads, buildings visible; landmarks red.
 
 ## M1: Looks like Ridgewood, not a diagram
-- Pitched roofs (OSM `roof:shape`, else a gable heuristic by footprint)
-- Pavements/kerbs alongside residential roads; road junction cleanup
-- Real materials (tarmac, brick, grass) instead of flat colours
+- [x] OSM aligned to LIDAR (per-region shift, D9)
+- [x] Building heights from LIDAR DSM - DTM (371/373 in region 1)
+- [x] Pitched roofs: gabled / gabled-across / hipped / flat fitted to LIDAR; OSM `roof:shape` wins
+- [x] Textured materials (brick, render, clay tile, slate, felt, tarmac, paving, grass); UNVERIFIED in UE
+- [ ] Complex roofs (multi-section, e.g. The Highlands): segment footprint by LIDAR before fitting
+- [ ] Pavements/kerbs alongside residential roads; road junction cleanup
 - Terrain as a UE Landscape (heightmap export) so foliage and paint layers work
 - Exit test: side-by-side screenshot against Street View at 3 chosen spots is recognisable
 

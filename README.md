@@ -71,7 +71,9 @@ cd vuckfield
 | E / Q | Up / down |
 | Esc | Stop playing |
 
-Landmarks (Nursery Lane, The Highlands) are red. Terrain is green, roads dark grey, buildings beige.
+Landmarks (Nursery Lane, The Highlands) have flat red walls so you can find them. Everything else is
+textured: grass, tarmac roads, paved footpaths, and brick or render houses with clay-tile, slate or felt
+roofs. Building heights and roof shapes come from the Environment Agency LIDAR survey.
 
 **If the Vuckfield menu is missing:** open *Window > Output Log*, switch the input box from `Cmd` to
 `Python` and run:
