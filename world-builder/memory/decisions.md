@@ -48,3 +48,10 @@ LIDAR ground (DSM - DTM) and applies it to all OSM ways. Why: OSM outlines in Ri
 from the EA LIDAR (imagery offset when traced); LIDAR is surveyed to ~0.5 m so it is the reference.
 Region 1: shift (-1.86 E, +1.53 N), roof coverage 82% -> 98%. Applied only if coverage rises >= 5 points.
 Consequence: adjacent regions may get slightly different shifts; seams must be checked in M3.
+
+## D10: Buildings drive the OSM shift; roads accepted ~1 m off for now; per-building offset only for sampling
+2026-10-11. Refines D9. The reviewer measured that roads alone prefer dy 0 to +1 m against the buildings'
++1.53 m (OSM outlines are traced from roofs, which include imagery lean and eaves). One shared shift is kept
+because roads drape on the DTM and a 1 m error is not visible at M1 fidelity. Each building's roof is fitted
+from LIDAR sampled at a small (<= 1 m, median ~0.35 m) per-building offset, but meshes stay on the shared-shift
+OSM footprint so semi-detached pairs do not open gaps. Revisit for kerbs/pavements (M1) or walking (M2).
