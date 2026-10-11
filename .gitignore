@@ -5,3 +5,4 @@ __pycache__/
 *.part
 build/regions/*/preview.png
 .venv/
+*.egg-info/
