@@ -3,7 +3,7 @@
 Last updated: 2026-10-11
 
 ## Now
-- Milestone **M0: fly-through of region 1** (`surveyor/roadmap.md`)
+- Milestone **M0: fly-through of region 1** (`world-builder/roadmap.md`)
 - Region `nursery-lane`: Nursery Lane to The Highlands, Ridgewood. 400 m x 650 m, BNG origin 547600, 119800.
 
 ## Done this session
@@ -13,12 +13,14 @@ Last updated: 2026-10-11
   (ways 30317859, 61193065). Plan-view preview checked: geography and orientation correct.
 - Unreal project (`unreal/Vuckfield.uproject`) + importer `vuckfield_ue` + *Vuckfield* editor menu.
   **UNVERIFIED: never run in Unreal.**
-- Surveyor: 4 agents, 4 skills, SessionStart hook, memory files, `surveyor/check.py`, CI workflow.
+- World-Builder framework (renamed from Surveyor, D8): 4 agents (cartographer, pipeline-engineer,
+  unreal-engineer, reviewer), 4 skills, SessionStart hook, memory, `world-builder/check.py`, CI.
+- README: prerequisites + local install/test steps. Work merged to `main`.
 
 ## Next
 1. User runs the M0 exit test (below) and reports the result or the Output Log errors.
 2. Fix whatever the first Unreal run breaks (expect something: the importer is untested).
-3. Start M1 with pitched roofs + LIDAR DSM building heights (`surveyor/memory/sources.md`).
+3. Start M1 with pitched roofs + LIDAR DSM building heights (`world-builder/memory/sources.md`).
 
 ## Blocked / waiting on user
 - **M0 exit test in UE 5.4+:** open `unreal/Vuckfield.uproject` (pick your engine version if asked) ->

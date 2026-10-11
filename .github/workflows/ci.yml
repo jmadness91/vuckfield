@@ -11,6 +11,6 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install -e "pipeline[dev]"
-      - run: python surveyor/check.py
+      - run: python world-builder/check.py
       - run: python -m pytest -q
         working-directory: pipeline

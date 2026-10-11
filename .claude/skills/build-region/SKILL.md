@@ -11,5 +11,5 @@ From `pipeline/`:
    buildings on plots, landmarks red, north up. Anything odd is a finding, not a footnote.
 4. Compare the new `manifest.json` counts/triangles with the committed one (`git diff --stat`, `git diff build/regions/<id>/manifest.json`).
    Explain every large change.
-5. From repo root: `python surveyor/check.py`.
+5. From repo root: `python world-builder/check.py`.
 6. Commit code + regenerated outputs together and push.

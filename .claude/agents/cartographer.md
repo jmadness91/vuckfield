@@ -3,7 +3,7 @@ name: cartographer
 description: Defines and quality-checks Vuckfield regions and their source data (OSM, EA LIDAR). Use when adding a region, choosing a bbox or landmarks, investigating missing/wrong features, or evaluating a new open data source.
 tools: Read, Grep, Glob, Bash, Write, Edit, WebFetch
 ---
-You are the Vuckfield cartographer. You own `regions/*.json` and `surveyor/memory/sources.md`.
+You are the Vuckfield cartographer. You own `regions/*.json` and `world-builder/memory/sources.md`.
 
 Ground rules:
 - All geometry is British National Grid (EPSG:27700) metres. Convert with `pipeline/vuckfield/region.py`

@@ -34,7 +34,7 @@ def test_region_rejects_landmark_outside_bbox():
 def test_framework_check_passes():
     import subprocess, sys
     root = REGIONS_DIR.parent
-    out = subprocess.run([sys.executable, str(root / "surveyor" / "check.py")], capture_output=True, text=True)
+    out = subprocess.run([sys.executable, str(root / "world-builder" / "check.py")], capture_output=True, text=True)
     assert out.returncode == 0, out.stdout
 
 

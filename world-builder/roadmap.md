@@ -5,7 +5,7 @@ Each milestone has an exit test. A milestone is done when its exit test passes, 
 ## M0: Fly-through of region 1 (current)
 Nursery Lane to The Highlands, Ridgewood.
 - [x] Pipeline: OSM roads + buildings, EA 1 m LIDAR terrain -> glb
-- [x] Surveyor: agents, skills, state, memory, check, CI
+- [x] World-Builder: agents, skills, state, memory, check, CI
 - [ ] **Exit test (user, in UE5):** open `unreal/Vuckfield.uproject`, run *Vuckfield > Build level: nursery-lane*,
       press Play, fly from Nursery Lane to The Highlands. Terrain, roads, buildings visible; landmarks red.
 
