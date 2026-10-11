@@ -32,8 +32,14 @@ SHAPES = ("flat", "gabled", "gabled_x", "hipped")
 MIN_LIDAR_COVERAGE = 0.5   # fraction of footprint samples on raised ground to trust the LIDAR
 ROOF_SAMPLE_MIN_M = 1.5    # samples lower than this above ground are not roof
 MIN_PITCHED_RISE_M = 0.8   # less rise than this is a flat roof
-PITCH_GAIN = 0.8           # a pitched model must cut the flat model's rms error by 20%
+FLAT_TOLERANCE = 1.1       # flat wins only if it fits within 10% of the best pitched model
 HIP_GAIN = 0.9             # hipped must beat gabled by 10% to be chosen (gabled is commoner here)
+FIT_INSET_M = 1.0          # ignore 1 m round the edge: 1 m pixels there blend roof, gutter and ground
+TRIM_FRACTION = 0.15       # refit without the worst 15% of samples (trees, chimneys, dormers)
+LOCAL_SHIFT_M = 1.0        # per-building search radius for sampling (after the region-wide shift)
+HOUSE_SPREAD_M = 2.0       # a house whose roof spans more height than this is not flat
+HOUSE_TYPES = {"house", "detached", "semidetached_house", "terrace", "residential", "bungalow"}
+SMALL_UNTYPED_M2 = 200.0   # building=yes this small is almost always a house in Ridgewood
 EAVE_RANGE_M = (2.0, 30.0)
 RISE_RANGE_M = (0.0, 8.0)
 DEFAULT_PITCH_DEG = 35.0
@@ -129,14 +135,36 @@ def _regions(shape: str, frame: Frame) -> list[Polygon]:
 
 # --- fitting -----------------------------------------------------------------
 
+def _lstsq(f: np.ndarray, h: np.ndarray) -> tuple[float, float]:
+    if np.ptp(f) < 1e-6:
+        return float(h.mean()), 0.0
+    (eave, rise), *_ = np.linalg.lstsq(np.column_stack([np.ones_like(f), f]), h, rcond=None)
+    return (float(h.mean()), 0.0) if rise < 0 else (float(eave), float(rise))
+
+
+def _trimmed_fit(f: np.ndarray, h: np.ndarray) -> tuple[float, float, float]:
+    """(rms, eave, rise): least squares, then again without the worst TRIM_FRACTION of samples."""
+    eave, rise = _lstsq(f, h)
+    resid = np.abs(eave + rise * f - h)
+    keep = resid <= np.quantile(resid, 1 - TRIM_FRACTION) if len(h) >= 10 else np.ones(len(h), bool)
+    eave, rise = _lstsq(f[keep], h[keep])
+    rms = float(np.sqrt(np.mean((eave + rise * f[keep] - h[keep]) ** 2)))
+    return rms, eave, rise
+
+
 def fit_roof(way: Way, dtm: Terrain, dsm: Terrain) -> Roof | None:
     """Least-squares eave/rise for each shape against LIDAR heights; None if the LIDAR doesn't
     show this building (e.g. built after the survey)."""
-    pts = footprint_samples(way, inset=0.5)
+    dx, dy = _local_offset(way, dtm, dsm)
+    pts = footprint_samples(way, inset=FIT_INSET_M)
+    if len(pts) < 6:
+        pts = footprint_samples(way, inset=0.5)  # small buildings: accept some edge blur
     if len(pts) < 6:
         return None
-    ground = dtm.sample(pts[:, 0], pts[:, 1])
-    h = dsm.sample(pts[:, 0], pts[:, 1]) - ground
+    # Sample where the LIDAR shows this building; the mesh keeps the OSM footprint (moving
+    # each half of a semi independently would open gaps between them).
+    ground = dtm.sample(pts[:, 0] + dx, pts[:, 1] + dy)
+    h = dsm.sample(pts[:, 0] + dx, pts[:, 1] + dy) - ground
     roof = h > ROOF_SAMPLE_MIN_M
     if roof.mean() < MIN_LIDAR_COVERAGE:
         return None
@@ -144,32 +172,48 @@ def fit_roof(way: Way, dtm: Terrain, dsm: Terrain) -> Roof | None:
     frame = Frame.of(way.polygon())
     a, b = frame.to_ab(pts[:, 0], pts[:, 1])
 
-    fits = {}
-    for shape in SHAPES:
-        f = _f(shape, a, b, frame)
-        if shape == "flat" or np.ptp(f) < 1e-6:
-            eave, rise = float(h.mean()), 0.0
-        else:
-            A = np.column_stack([np.ones_like(f), f])
-            (eave, rise), *_ = np.linalg.lstsq(A, h, rcond=None)
-            if rise < 0:
-                eave, rise = float(h.mean()), 0.0
-        rms = float(np.sqrt(np.mean((eave + rise * f - h) ** 2)))
-        fits[shape] = (rms, float(eave), float(rise))
-
+    fits = {shape: _trimmed_fit(_f(shape, a, b, frame), h) for shape in SHAPES}
     pitched = min(("gabled", "gabled_x"), key=lambda s: fits[s][0])
     if fits["hipped"][0] < HIP_GAIN * fits[pitched][0]:
         pitched = "hipped"
     rms, eave, rise = fits[pitched]
-    if rise < MIN_PITCHED_RISE_M or rms > PITCH_GAIN * fits["flat"][0]:
+    # Pitched is the norm for houses here; flat has to earn it by fitting about as well.
+    source = "lidar"
+    if rise < MIN_PITCHED_RISE_M or fits["flat"][0] <= FLAT_TOLERANCE * rms:
         pitched, (rms, eave, rise) = "flat", fits["flat"]
+        spread = float(np.percentile(h, 95) - np.percentile(h, 5))
+        if _is_house(way) and spread > HOUSE_SPREAD_M:
+            # A roof too complex for one ridge (cross gables, extensions). A pitched roof at the
+            # measured eave and ridge heights is far closer than a flat slab at the mean.
+            pitched, source = "gabled", "lidar-percentiles"
+            eave, rise = float(np.percentile(h, 10)), float(np.percentile(h, 90) - np.percentile(h, 10))
     tag_shape = OSM_ROOF_SHAPES.get(way.tags.get("roof:shape", ""))
     if tag_shape and tag_shape != pitched:  # mapper knowledge beats the fit for shape
         pitched = tag_shape
         _, eave, rise = fits[tag_shape if tag_shape in fits else "gabled"]
     eave = float(np.clip(eave, *EAVE_RANGE_M))
     rise = float(np.clip(rise, *RISE_RANGE_M)) if pitched != "flat" else 0.0
-    return Roof(pitched, float(np.median(ground)), eave, rise, "lidar")
+    return Roof(pitched, float(np.median(ground)), eave, rise, source)
+
+
+def _is_house(way: Way) -> bool:
+    kind = way.tags.get("building", "")
+    return kind in HOUSE_TYPES or (kind == "yes" and way.polygon().area < SMALL_UNTYPED_M2)
+
+
+def _local_offset(way: Way, dtm: Terrain, dsm: Terrain) -> tuple[float, float]:
+    """Small per-building shift that best puts the footprint over raised ground (centre of the
+    plateau of equally good shifts, as in align.estimate_offset)."""
+    pts = footprint_samples(way, inset=0.5)
+    if len(pts) < 6:
+        return 0.0, 0.0
+    steps = np.arange(-LOCAL_SHIFT_M, LOCAL_SHIFT_M + 1e-9, 0.25)
+    scores = [(float(((dsm.sample(pts[:, 0] + dx, pts[:, 1] + dy)
+                       - dtm.sample(pts[:, 0] + dx, pts[:, 1] + dy)) > 2.0).mean()), dx, dy)
+              for dx in steps for dy in steps]
+    top = max(sc for sc, _, _ in scores)
+    plateau = np.array([(dx, dy) for sc, dx, dy in scores if sc >= top - 0.02])
+    return float(plateau[:, 0].mean()), float(plateau[:, 1].mean())
 
 
 def default_roof(way: Way, ground: float) -> Roof:
@@ -185,10 +229,12 @@ def default_roof(way: Way, ground: float) -> Roof:
     rise = 0.0 if shape == "flat" else min(hw * math.tan(math.radians(DEFAULT_PITCH_DEG)), 5.0)
     try:
         total = float(t.get("height", t.get("building:height", "")).split()[0])
-        if total > eave:
-            rise = total - eave if shape != "flat" else 0.0
-            eave = eave if shape != "flat" else total
-            source = "tags"
+        if shape == "flat":
+            eave, rise = total, 0.0
+        else:  # keep the eave below the tagged total height, whatever the default said
+            eave = min(eave, total * 0.65)
+            rise = total - eave
+        source = "tags"
     except (ValueError, IndexError):
         pass
     return Roof(shape, ground, eave, rise, source)
@@ -227,6 +273,23 @@ def _triangulate(poly: Polygon) -> tuple[np.ndarray, np.ndarray]:
     return np.asarray(v2, dtype=np.float64), np.asarray(f, dtype=np.int64)
 
 
+def _roof_uv(v3: np.ndarray, f: np.ndarray) -> np.ndarray:
+    """UVs in metres for one planar roof piece: u along the eaves (horizontal), v up the slope,
+    both true surface distances, so tile courses run level whichever way the piece faces."""
+    if not len(f):
+        return v3[:, :2].copy()
+    n = np.cross(v3[f[:, 1]] - v3[f[:, 0]], v3[f[:, 2]] - v3[f[:, 0]])
+    n = n[np.argmax(np.linalg.norm(n, axis=1))]
+    n = n / np.linalg.norm(n)
+    horizontal = math.hypot(n[0], n[1])
+    if horizontal < 1e-6:  # flat roof: plan coordinates
+        return v3[:, :2].copy()
+    down = n[:2] / horizontal                    # the normal leans downhill
+    eave = np.array([-down[1], down[0]])
+    stretch = math.sqrt(1 + (horizontal / n[2]) ** 2)  # plan distance -> distance along the slope
+    return np.column_stack([v3[:, :2] @ eave, -(v3[:, :2] @ down) * stretch])
+
+
 def building_parts(footprint: Polygon, roof: Roof, base: float, origin: tuple[float, float]) -> tuple[Part, Part]:
     """(walls incl. floor, roof) for a footprint in BNG metres. Output in local metres (minus origin)."""
     ox, oy = origin
@@ -255,9 +318,7 @@ def building_parts(footprint: Polygon, roof: Roof, base: float, origin: tuple[fl
             n = np.cross(v3[f[:, 1]] - v3[f[:, 0]], v3[f[:, 2]] - v3[f[:, 0]])
             if len(f) and n[:, 2].sum() < 0:
                 f = f[:, ::-1]
-            a, b = frame.to_ab(v2[:, 0], v2[:, 1])
-            slope = math.sqrt(1 + (rise / max(frame.hw, 1e-6)) ** 2)  # stretch v along the slope
-            roofs.append(Part(v3, f, np.column_stack([a, b * slope])))
+            roofs.append(Part(v3, f, _roof_uv(v3, f)))
             floors.append(Part(np.column_stack([v2, np.full(len(v2), base)]), f[:, ::-1] if len(f) else f,
                                v2.copy()))
 

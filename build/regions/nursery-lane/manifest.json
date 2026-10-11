@@ -2,7 +2,7 @@
   "manifest_version": 2,
   "region": "nursery-lane",
   "name": "Nursery Lane to The Highlands",
-  "built_at": "2026-10-11T16:56:21+00:00",
+  "built_at": "2026-10-11T17:12:06+00:00",
   "coordinates": {
     "units": "metres",
     "convention": "glTF y-up: +x east, +y up (metres above Ordnance Datum), +z south",
@@ -42,10 +42,16 @@
     "unnamed_buildings": 368,
     "building_heights_from_lidar": 371,
     "roof_shapes": {
-      "flat": 71,
-      "gabled": 142,
-      "gabled_x": 119,
-      "hipped": 41
+      "flat": 14,
+      "gabled": 199,
+      "gabled_x": 130,
+      "hipped": 30
+    },
+    "roof_sources": {
+      "lidar": 352,
+      "lidar-percentiles": 19,
+      "tags": 1,
+      "default": 1
     }
   },
   "landmarks": [
@@ -57,9 +63,9 @@
         416462289
       ],
       "local_m": {
-        "x_east": -49.92,
-        "y_north": 228.53,
-        "z": 54.99
+        "x_east": -51.77,
+        "y_north": 230.06,
+        "z": 54.77
       }
     },
     {
@@ -71,9 +77,9 @@
         61193065
       ],
       "local_m": {
-        "x_east": 21.3,
-        "y_north": -147.54,
-        "z": 51.3
+        "x_east": 19.45,
+        "y_north": -146.02,
+        "z": 51.44
       }
     }
   ],
@@ -81,7 +87,7 @@
     "terrain": {
       "file": "terrain.glb",
       "triangles": 130000,
-      "bytes": 2920848,
+      "bytes": 3707424,
       "bounds_local_m": {
         "x_east": [
           -200.0,
@@ -99,8 +105,8 @@
     },
     "landmark_the-highlands": {
       "file": "landmark_the-highlands.glb",
-      "triangles": 20,
-      "bytes": 18744,
+      "triangles": 28,
+      "bytes": 3600,
       "bounds_local_m": {
         "x_east": [
           -63.93,
@@ -112,14 +118,14 @@
         ],
         "z": [
           53.48,
-          59.52
+          61.18
         ]
       }
     },
     "landmark_nursery-lane": {
       "file": "landmark_nursery-lane.glb",
       "triangles": 140,
-      "bytes": 5740,
+      "bytes": 7744,
       "bounds_local_m": {
         "x_east": [
           -4.48,
@@ -138,7 +144,7 @@
     "roads": {
       "file": "roads.glb",
       "triangles": 6046,
-      "bytes": 271812,
+      "bytes": 346740,
       "bounds_local_m": {
         "x_east": [
           -202.15,
@@ -156,8 +162,8 @@
     },
     "buildings": {
       "file": "buildings.glb",
-      "triangles": 7436,
-      "bytes": 584608,
+      "triangles": 7796,
+      "bytes": 810756,
       "bounds_local_m": {
         "x_east": [
           -205.6,
@@ -169,7 +175,7 @@
         ],
         "z": [
           30.98,
-          71.01
+          70.94
         ]
       }
     }

@@ -24,7 +24,7 @@ def _export(parts: list[trimesh.Trimesh], path: Path, node_prefix: str) -> dict:
     scene = trimesh.Scene()
     for i, m in enumerate(parts):
         scene.add_geometry(m, node_name=f"{node_prefix}_{i}", geom_name=f"{node_prefix}_{i}")
-    path.write_bytes(scene.export(file_type="glb"))
+    path.write_bytes(scene.export(file_type="glb", include_normals=True))
     return {
         "file": path.name,
         "triangles": int(sum(len(m.faces) for m in parts)),
@@ -69,12 +69,13 @@ def build(region_id: str, refresh: bool = False, out_dir: Path | None = None) ->
             raise RuntimeError(f"landmark {lm['id']!r} not found in OSM data ({lm['osm']}, name={lm['name']!r})")
         claimed.update(w.id for w in hits)
         parts = (meshes.road_meshes(hits, region, surface, material="landmark") if is_road
-                 else meshes.building_meshes(hits, region, surface, fitted, wall_override="landmark"))
+                 else meshes.building_meshes(hits, region, surface, fitted, override="landmark"))
         if not parts:
             raise RuntimeError(f"landmark {lm['id']!r} produced no geometry inside the region bbox")
         key = f"landmark_{lm['id']}"
         files[key] = _export(parts, out / f"{key}.glb", f"Landmark_{lm['id'].replace('-', '_')}")
         e, n = lonlat_to_bng(lm["lon"], lm["lat"])
+        e, n = e + alignment.dx, n + alignment.dy  # same frame as the shifted OSM geometry
         x, y = region.to_local(e, n)
         landmark_info.append({
             "id": lm["id"], "name": lm["name"], "file": f"{key}.glb",
@@ -118,6 +119,9 @@ def build(region_id: str, refresh: bool = False, out_dir: Path | None = None) ->
             "roof_shapes": {shape: sum(1 for w in buildings
                                        if meshes.building_roof(w, surface, fitted).shape == shape)
                             for shape in roofs.SHAPES},
+            "roof_sources": {src: sum(1 for w in buildings
+                                      if meshes.building_roof(w, surface, fitted).source == src)
+                             for src in ("lidar", "lidar-percentiles", "tags", "default")},
         },
         "landmarks": landmark_info,
         "files": files,

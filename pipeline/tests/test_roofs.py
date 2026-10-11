@@ -1,4 +1,5 @@
 import math
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -105,3 +106,71 @@ def test_gable_end_wall_rises_to_ridge():
     # Gable ends are the short (7 m) walls at x = 0 and x = 10; their top reaches the 8 m ridge.
     end = walls.verts[np.isclose(walls.verts[:, 0], 0.0)]
     assert end[:, 2].max() == pytest.approx(8.0)
+
+
+def _uv_jacobians(part):
+    """Per triangle: 3D displacement per unit u and per unit v."""
+    P, T, f = part.verts, part.uv, part.faces
+    dp = np.stack([P[f[:, 1]] - P[f[:, 0]], P[f[:, 2]] - P[f[:, 0]]], axis=2)   # (n, 3, 2)
+    dt = np.stack([T[f[:, 1]] - T[f[:, 0]], T[f[:, 2]] - T[f[:, 0]]], axis=2)   # (n, 2, 2)
+    return dp @ np.linalg.inv(dt)                                                 # (n, 3, 2)
+
+
+@pytest.mark.parametrize("shape", ["gabled", "gabled_x", "hipped"])
+@pytest.mark.parametrize("name", ["rectangle", "rotated", "l_shape"])
+def test_roof_texture_runs_level_at_true_scale(name, shape):
+    # Reviewer finding: gabled_x and hip-end faces had tile courses running down the slope.
+    _, top = roofs.building_parts(FOOTPRINTS[name], roofs.Roof(shape, 0.0, 5.0, 3.0, "lidar"), 0.0, (0, 0))
+    J = _uv_jacobians(top)
+    du, dv = J[:, :, 0], J[:, :, 1]
+    # 0.1% tolerance: the 0.1 mm snapping grid makes pieces planar only to ~1e-4.
+    assert np.allclose(np.linalg.norm(du, axis=1), 1.0, atol=1e-3)  # 1 uv unit = 1 m along the eave
+    assert np.allclose(np.linalg.norm(dv, axis=1), 1.0, atol=1e-3)  # ... and 1 m up the slope
+    assert np.allclose(du[:, 2], 0.0, atol=1e-3)                     # courses are level
+    assert (dv[:, 2] > 0).all()                                      # v increases uphill
+
+
+def test_low_height_tag_is_respected():
+    # Reviewer finding: height=4 on a house used to keep the 5.2 m default eave.
+    r = roofs.default_roof(house_way(tags={"building": "house", "height": "4"}), GROUND)
+    assert r.ridge == pytest.approx(4.0) and r.eave < 4.0
+
+
+def test_pitched_roof_survives_offset_footprint_and_noise():
+    # Reviewer finding: edge blur + misalignment made every model fit badly, so flat won.
+    true = house_way(x0=50.8, y0=49.4)                   # where the LIDAR sees the house
+    osm_way = house_way(x0=50.0, y0=50.0)                # OSM outline 1 m off
+    dtm, dsm = lidar_for(true, "gabled", 5.0, 3.0)
+    rng = np.random.default_rng(3)
+    dsm.h += rng.normal(0, 0.3, dsm.h.shape)             # LIDAR noise
+    roof = roofs.fit_roof(osm_way, dtm, dsm)
+    assert roof.shape == "gabled"
+    assert roof.eave == pytest.approx(5.0, abs=0.6) and roof.rise == pytest.approx(3.0, abs=0.8)
+
+
+REGION_CACHE = Path(__file__).resolve().parents[2] / "data" / "cache" / "nursery-lane"
+
+
+@pytest.mark.skipif(not (REGION_CACHE / "dsm_lz_1m.tif").exists(), reason="needs cached region 1 LIDAR")
+def test_region_1_has_no_flat_houses_with_sloped_lidar():
+    # Regression on real data for the reviewer's H1: houses with >2 m of roof height spread were flat.
+    from vuckfield import align, osm, sources
+    from vuckfield.region import Region
+    region = Region.load("nursery-lane")
+    dtm = Terrain.from_geotiff(sources.fetch_dtm(region))
+    dsm = Terrain.from_geotiff(sources.fetch_dsm(region))
+    ways = osm.read_ways(sources.fetch_osm(region))
+    a = align.estimate_offset(osm.buildings(ways, region), dtm, dsm)
+    flat_houses = [w.id for w in osm.buildings(align.shift_ways(ways, a.dx, a.dy), region)
+                   if roofs._is_house(w) and (r := roofs.fit_roof(w, dtm, dsm)) and r.shape == "flat"
+                   and _spread(w, dtm, dsm) > roofs.HOUSE_SPREAD_M]
+    assert flat_houses == []
+
+
+def _spread(way, dtm, dsm):
+    from vuckfield.align import footprint_samples
+    dx, dy = roofs._local_offset(way, dtm, dsm)  # measure where the fit samples
+    p = footprint_samples(way, inset=1.0)
+    h = dsm.sample(p[:, 0] + dx, p[:, 1] + dy) - dtm.sample(p[:, 0] + dx, p[:, 1] + dy)
+    h = h[h > roofs.ROOF_SAMPLE_MIN_M]
+    return np.percentile(h, 95) - np.percentile(h, 5) if len(h) >= 6 else 0.0

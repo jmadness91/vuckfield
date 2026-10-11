@@ -241,9 +241,10 @@ def building_roof(way: Way, surface: TerrainSurface, fitted: dict[int, roofs.Roo
 
 def building_meshes(ways: list[Way], region: Region, surface: TerrainSurface,
                     fitted: dict[int, roofs.Roof] | None = None,
-                    wall_override: str | None = None) -> list[trimesh.Trimesh]:
+                    override: str | None = None) -> list[trimesh.Trimesh]:
     """One mesh per material (walls incl. floors, roofs). `fitted` holds LIDAR roofs by way id;
-    buildings without one get tag/default heights. `wall_override` forces a wall material."""
+    buildings without one get tag/default heights. `override` forces one material for walls and
+    roof (landmarks: the whole building stays highlighted)."""
     fitted = fitted or {}
     groups: dict[str, list[roofs.Part]] = {}
     for way in ways:
@@ -251,8 +252,8 @@ def building_meshes(ways: list[Way], region: Region, surface: TerrainSurface,
         base = float(surface.sample(ring[:, 0], ring[:, 1]).min()) - BUILDING_SINK_M
         roof = building_roof(way, surface, fitted)
         w, r = roofs.building_parts(way.polygon(), roof, base, (region.origin_e, region.origin_n))
-        groups.setdefault(wall_override or wall_material(way), []).append(w)
-        groups.setdefault(roof_material(way, roof), []).append(r)
+        groups.setdefault(override or wall_material(way), []).append(w)
+        groups.setdefault(override or roof_material(way, roof), []).append(r)
     out = []
     for material in sorted(groups):
         joined = roofs.Part.join(groups[material])
