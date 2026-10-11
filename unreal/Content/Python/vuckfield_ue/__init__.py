@@ -47,8 +47,8 @@ def _load_manifest(region_id):
 
 
 def _import_glb(path, dest):
-    if unreal.EditorAssetLibrary.does_directory_exist(dest):
-        unreal.EditorAssetLibrary.delete_directory(dest)
+    # Re-import in place (replace_existing) rather than deleting the folder: deletion fails while
+    # the undo buffer still references meshes from the previous build of the level.
     task = unreal.AssetImportTask()
     task.set_editor_property("filename", path)
     task.set_editor_property("destination_path", dest)

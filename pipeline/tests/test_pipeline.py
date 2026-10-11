@@ -4,7 +4,7 @@ from shapely.geometry import LineString
 
 from vuckfield import meshes
 from vuckfield.osm import Way
-from vuckfield.region import Region, lonlat_to_bng
+from vuckfield.region import REGIONS_DIR, Region, lonlat_to_bng
 from vuckfield.terrain import Terrain, _fill_gaps
 
 
@@ -20,9 +20,22 @@ def flat(h=10.0):
     return Terrain(np.full((120, 120), h), west=-10, north=110, res=1.0)
 
 
-def test_shipped_regions_are_valid():
-    r = Region.load("nursery-lane")
-    assert r.max_e - r.min_e == 400
+@pytest.mark.parametrize("region_id", sorted(p.stem for p in REGIONS_DIR.glob("*.json")))
+def test_shipped_regions_are_valid(region_id):
+    Region.load(region_id)  # validate() raises on bad bbox/origin/landmarks
+
+
+def test_region_rejects_landmark_outside_bbox():
+    r = make_region(landmarks=[{"id": "x", "name": "x", "osm": "a=b", "lat": 51.5, "lon": -0.1}])
+    with pytest.raises(ValueError, match="landmark"):
+        r.validate()
+
+
+def test_framework_check_passes():
+    import subprocess, sys
+    root = REGIONS_DIR.parent
+    out = subprocess.run([sys.executable, str(root / "surveyor" / "check.py")], capture_output=True, text=True)
+    assert out.returncode == 0, out.stdout
 
 
 def test_region_rejects_origin_outside_bbox():

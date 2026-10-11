@@ -1,0 +1,14 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cd \"$CLAUDE_PROJECT_DIR\" && echo '=== surveyor/STATE.md ===' && cat surveyor/STATE.md && echo && git status --short --branch | head -20"
+          }
+        ]
+      }
+    ]
+  }
+}
