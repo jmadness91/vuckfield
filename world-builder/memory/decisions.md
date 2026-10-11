@@ -41,3 +41,10 @@ the clash. Why not split it into a generic package now: with one world there is 
 are generic; guessing produces abstractions that fit nothing. Consequence: when a second world starts,
 extract what both actually share (agents, skills, check, state/memory layout) into its own repo, and keep
 world-specific content (regions, data sources, Unreal project) here.
+
+## D9: OSM geometry is shifted to match the LIDAR, per region
+2026-10-11. Each region build estimates one (dx, dy) that maximises OSM building footprint over raised
+LIDAR ground (DSM - DTM) and applies it to all OSM ways. Why: OSM outlines in Ridgewood are offset ~2.4 m
+from the EA LIDAR (imagery offset when traced); LIDAR is surveyed to ~0.5 m so it is the reference.
+Region 1: shift (-1.86 E, +1.53 N), roof coverage 82% -> 98%. Applied only if coverage rises >= 5 points.
+Consequence: adjacent regions may get slightly different shifts; seams must be checked in M3.

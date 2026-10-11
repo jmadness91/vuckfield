@@ -8,7 +8,7 @@ from pathlib import Path
 import numpy as np
 import trimesh
 
-from . import meshes, osm, sources
+from . import align, meshes, osm, sources
 from .region import Region, bng_to_lonlat, lonlat_to_bng
 from .terrain import Terrain
 
@@ -47,7 +47,10 @@ def build(region_id: str, refresh: bool = False, out_dir: Path | None = None) ->
     out.mkdir(parents=True, exist_ok=True)
 
     terrain = Terrain.from_geotiff(sources.fetch_dtm(region, refresh))
+    dsm = Terrain.from_geotiff(sources.fetch_dsm(region, refresh))
     ways = osm.read_ways(sources.fetch_osm(region, refresh))
+    alignment = align.estimate_offset(osm.buildings(ways, region), terrain, dsm)
+    ways = align.shift_ways(ways, alignment.dx, alignment.dy)
     roads = osm.roads(ways)
     buildings = osm.buildings(ways, region)
 
@@ -104,6 +107,7 @@ def build(region_id: str, refresh: bool = False, out_dir: Path | None = None) ->
             },
             "height_range_m": [round(float(grid.min()), 2), round(float(grid.max()), 2)],
         },
+        "osm_alignment": alignment.as_dict(),
         "counts": {
             "road_ways_drawn": sum(1 for w in roads if meshes.road_width(w) is not None
                                    and meshes._clip_lines(w, region)),

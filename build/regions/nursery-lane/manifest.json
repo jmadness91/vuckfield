@@ -2,7 +2,7 @@
   "manifest_version": 2,
   "region": "nursery-lane",
   "name": "Nursery Lane to The Highlands",
-  "built_at": "2026-10-11T13:57:51+00:00",
+  "built_at": "2026-10-11T16:47:32+00:00",
   "coordinates": {
     "units": "metres",
     "convention": "glTF y-up: +x east, +y up (metres above Ordnance Datum), +z south",
@@ -29,8 +29,15 @@
       63.24
     ]
   },
+  "osm_alignment": {
+    "dx_east_m": -1.856,
+    "dy_north_m": 1.526,
+    "applied": true,
+    "roof_coverage_before": 0.819,
+    "roof_coverage_after": 0.977
+  },
   "counts": {
-    "road_ways_drawn": 79,
+    "road_ways_drawn": 78,
     "buildings": 373,
     "unnamed_buildings": 368
   },
@@ -89,16 +96,16 @@
       "bytes": 1388,
       "bounds_local_m": {
         "x_east": [
-          -62.08,
-          -26.79
+          -63.93,
+          -28.65
         ],
         "y_north": [
-          221.37,
-          243.91
+          222.89,
+          245.44
         ],
         "z": [
-          53.18,
-          62.11
+          53.48,
+          62.1
         ]
       }
     },
@@ -108,54 +115,54 @@
       "bytes": 4396,
       "bounds_local_m": {
         "x_east": [
-          -2.63,
-          54.48
+          -4.48,
+          52.62
         ],
         "y_north": [
-          -214.41,
-          -105.08
+          -212.89,
+          -103.56
         ],
         "z": [
-          44.91,
-          55.43
+          45.0,
+          55.55
         ]
       }
     },
     "roads": {
       "file": "roads.glb",
-      "triangles": 6072,
-      "bytes": 149268,
+      "triangles": 6046,
+      "bytes": 148624,
       "bounds_local_m": {
         "x_east": [
           -202.15,
-          202.17
+          202.01
         ],
         "y_north": [
           -300.19,
           352.69
         ],
         "z": [
-          32.31,
-          63.56
+          32.37,
+          63.49
         ]
       }
     },
     "buildings": {
       "file": "buildings.glb",
       "triangles": 4692,
-      "bytes": 94344,
+      "bytes": 94340,
       "bounds_local_m": {
         "x_east": [
-          -205.29,
-          203.9
+          -205.6,
+          205.86
         ],
         "y_north": [
-          -302.61,
-          353.74
+          -301.82,
+          354.74
         ],
         "z": [
-          30.97,
-          70.47
+          30.98,
+          70.55
         ]
       }
     }
