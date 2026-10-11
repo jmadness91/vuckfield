@@ -1,8 +1,8 @@
 {
-  "manifest_version": 1,
+  "manifest_version": 2,
   "region": "nursery-lane",
   "name": "Nursery Lane to The Highlands",
-  "built_at": "2026-10-11T12:43:42+00:00",
+  "built_at": "2026-10-11T13:51:08+00:00",
   "coordinates": {
     "units": "metres",
     "convention": "glTF y-up: +x east, +y up (metres above Ordnance Datum), +z south",
@@ -67,27 +67,97 @@
     "terrain": {
       "file": "terrain.glb",
       "triangles": 130000,
-      "bytes": 2347244
+      "bytes": 2347244,
+      "bounds_local_m": {
+        "x_east": [
+          -200.0,
+          200.0
+        ],
+        "y_north": [
+          -300.0,
+          350.0
+        ],
+        "z": [
+          30.55,
+          63.52
+        ]
+      }
     },
     "landmark_the-highlands": {
       "file": "landmark_the-highlands.glb",
       "triangles": 20,
-      "bytes": 1388
+      "bytes": 1388,
+      "bounds_local_m": {
+        "x_east": [
+          -62.08,
+          -26.79
+        ],
+        "y_north": [
+          221.37,
+          243.91
+        ],
+        "z": [
+          53.17,
+          62.04
+        ]
+      }
     },
     "landmark_nursery-lane": {
       "file": "landmark_nursery-lane.glb",
       "triangles": 140,
-      "bytes": 4396
+      "bytes": 4396,
+      "bounds_local_m": {
+        "x_east": [
+          -2.63,
+          54.48
+        ],
+        "y_north": [
+          -214.41,
+          -105.08
+        ],
+        "z": [
+          44.94,
+          55.43
+        ]
+      }
     },
     "roads": {
       "file": "roads.glb",
       "triangles": 6072,
-      "bytes": 149268
+      "bytes": 149268,
+      "bounds_local_m": {
+        "x_east": [
+          -202.15,
+          202.17
+        ],
+        "y_north": [
+          -300.19,
+          352.69
+        ],
+        "z": [
+          32.32,
+          63.54
+        ]
+      }
     },
     "buildings": {
       "file": "buildings.glb",
       "triangles": 4692,
-      "bytes": 94344
+      "bytes": 94344,
+      "bounds_local_m": {
+        "x_east": [
+          -205.29,
+          203.9
+        ],
+        "y_north": [
+          -302.61,
+          353.74
+        ],
+        "z": [
+          30.98,
+          70.46
+        ]
+      }
     }
   },
   "attribution": [

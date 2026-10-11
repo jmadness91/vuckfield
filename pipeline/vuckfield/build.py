@@ -12,7 +12,7 @@ from . import meshes, osm, sources
 from .region import Region, bng_to_lonlat, lonlat_to_bng
 from .terrain import Terrain
 
-MANIFEST_VERSION = 1
+MANIFEST_VERSION = 2  # v2: per-file bounds_local_m for in-editor verification
 
 
 def _matches(way: osm.Way, landmark: dict) -> bool:
@@ -29,7 +29,16 @@ def _export(parts: list[trimesh.Trimesh], path: Path, node_prefix: str) -> dict:
         "file": path.name,
         "triangles": int(sum(len(m.faces) for m in parts)),
         "bytes": path.stat().st_size,
+        "bounds_local_m": _bounds_local(parts),
     }
+
+
+def _bounds_local(parts: list[trimesh.Trimesh]) -> dict:
+    """AABB in local metres. Parts are already glTF y-up: east = x, up = y, north = -z."""
+    v = np.vstack([m.vertices for m in parts])
+    east, up, north = v[:, 0], v[:, 1], -v[:, 2]
+    r = lambda a: [round(float(a.min()), 2), round(float(a.max()), 2)]  # noqa: E731
+    return {"x_east": r(east), "y_north": r(north), "z": r(up)}
 
 
 def build(region_id: str, refresh: bool = False, out_dir: Path | None = None) -> dict:

@@ -11,7 +11,7 @@ import os
 
 import unreal
 
-MANIFEST_VERSION = 1
+MANIFEST_VERSION = 2
 CONTENT_ROOT = "/Game/Vuckfield"
 ACTOR_FOLDER = "Vuckfield"
 CAMERA_HEIGHT_CM = 2500.0  # start 25 m above Nursery Lane
